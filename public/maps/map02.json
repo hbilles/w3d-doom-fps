@@ -1,0 +1,114 @@
+{
+  "name": "The Descent",
+  "author": "Phase 1 Test",
+  "music": "",
+  "ambientLight": { "r": 0.04, "g": 0.04, "b": 0.08 },
+  "fogColor": { "r": 0.01, "g": 0.01, "b": 0.04 },
+  "fogDensity": 0.02,
+
+  "vertices": [
+    [0, 0],
+    [10, 0],
+    [10, 8],
+    [6, 8],
+    [4, 8],
+    [0, 8],
+    [4, 9.5],
+    [6, 9.5],
+    [4, 11],
+    [6, 11],
+    [4, 12.5],
+    [6, 12.5],
+    [0, 12.5],
+    [10, 12.5],
+    [10, 20.5],
+    [0, 20.5]
+  ],
+
+  "sectors": [
+    {
+      "id": 0,
+      "floorHeight": 0,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_metal_grate",
+      "ceilingTexture": "ceiling_pipes",
+      "lightLevel": 0.4,
+      "special": null
+    },
+    {
+      "id": 1,
+      "floorHeight": 0.4,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_concrete_wet",
+      "ceilingTexture": "ceiling_industrial",
+      "lightLevel": 0.25,
+      "special": null
+    },
+    {
+      "id": 2,
+      "floorHeight": 0.8,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_concrete_wet",
+      "ceilingTexture": "ceiling_industrial",
+      "lightLevel": 0.2,
+      "special": null
+    },
+    {
+      "id": 3,
+      "floorHeight": 1.2,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_concrete_wet",
+      "ceilingTexture": "ceiling_industrial",
+      "lightLevel": 0.25,
+      "special": null
+    },
+    {
+      "id": 4,
+      "floorHeight": 1.2,
+      "ceilingHeight": 5.2,
+      "floorTexture": "floor_metal_grate",
+      "ceilingTexture": "ceiling_pipes",
+      "lightLevel": 0.35,
+      "special": null
+    }
+  ],
+
+  "linedefs": [
+    { "v1": 0,  "v2": 1,  "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 1,  "v2": 2,  "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 2,  "v2": 3,  "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_neon_orange" },    "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 3,  "v2": 4,  "frontSector": 0, "backSector": 1,    "frontTexture": { "lower": "wall_concrete" },        "backTexture": { "lower": "wall_concrete" }, "flags": { "twoSided": true } },
+    { "v1": 4,  "v2": 5,  "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_neon_orange" },    "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 5,  "v2": 0,  "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 4,  "v2": 6,  "frontSector": 1, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 6,  "v2": 7,  "frontSector": 1, "backSector": 2,    "frontTexture": { "lower": "wall_concrete" },        "backTexture": { "lower": "wall_concrete" }, "flags": { "twoSided": true } },
+    { "v1": 7,  "v2": 3,  "frontSector": 1, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 6,  "v2": 8,  "frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 8,  "v2": 9,  "frontSector": 2, "backSector": 3,    "frontTexture": { "lower": "wall_concrete" },        "backTexture": { "lower": "wall_concrete" }, "flags": { "twoSided": true } },
+    { "v1": 9,  "v2": 7,  "frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 8,  "v2": 10, "frontSector": 3, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 10, "v2": 11, "frontSector": 3, "backSector": 4,    "frontTexture": { "lower": "wall_concrete" },        "backTexture": { "lower": "wall_concrete" }, "flags": { "twoSided": true } },
+    { "v1": 11, "v2": 9,  "frontSector": 3, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 12, "v2": 10, "frontSector": 4, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 11, "v2": 13, "frontSector": 4, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 13, "v2": 14, "frontSector": 4, "backSector": null, "frontTexture": { "middle": "wall_neon_blue" },      "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 14, "v2": 15, "frontSector": 4, "backSector": null, "frontTexture": { "middle": "wall_neon_pink" },      "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 15, "v2": 12, "frontSector": 4, "backSector": null, "frontTexture": { "middle": "wall_neon_blue" },      "backTexture": null, "flags": { "impassable": true } }
+  ],
+
+  "things": [
+    { "type": 1,   "position": [5, 4],     "angle": 0,   "flags": {} },
+    { "type": 100, "position": [5, 16.5],  "angle": 180, "flags": {} },
+    { "type": 400, "position": [5, 14],    "angle": 0,   "flags": {} },
+    { "type": 300, "position": [8, 16.5],  "angle": 0,   "flags": {} },
+    { "type": 600, "position": [1, 4],     "angle": 0,   "flags": {} },
+    { "type": 600, "position": [9, 4],     "angle": 0,   "flags": {} },
+    { "type": 601, "position": [5, 10.25], "angle": 0,   "flags": {} },
+    { "type": 600, "position": [5, 19],    "angle": 0,   "flags": {} },
+    { "type": 600, "position": [1, 16.5],  "angle": 0,   "flags": {} }
+  ]
+}

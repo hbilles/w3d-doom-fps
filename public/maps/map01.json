@@ -1,0 +1,83 @@
+{
+  "name": "Neon Lobby",
+  "author": "Phase 1 Test",
+  "music": "",
+  "ambientLight": { "r": 0.05, "g": 0.05, "b": 0.1 },
+  "fogColor": { "r": 0.02, "g": 0.02, "b": 0.05 },
+  "fogDensity": 0.025,
+
+  "vertices": [
+    [0, 0],
+    [8, 0],
+    [8, 8],
+    [5, 8],
+    [3, 8],
+    [0, 8],
+    [3, 10],
+    [5, 10],
+    [0, 10],
+    [8, 10],
+    [8, 18],
+    [0, 18]
+  ],
+
+  "sectors": [
+    {
+      "id": 0,
+      "floorHeight": 0,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_metal_grate",
+      "ceilingTexture": "ceiling_pipes",
+      "lightLevel": 0.4,
+      "special": null
+    },
+    {
+      "id": 1,
+      "floorHeight": 0,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_concrete_wet",
+      "ceilingTexture": "ceiling_industrial",
+      "lightLevel": 0.2,
+      "special": null
+    },
+    {
+      "id": 2,
+      "floorHeight": 0,
+      "ceilingHeight": 4,
+      "floorTexture": "floor_metal_grate",
+      "ceilingTexture": "ceiling_pipes",
+      "lightLevel": 0.3,
+      "special": null
+    }
+  ],
+
+  "linedefs": [
+    { "v1": 0, "v2": 1, "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 1, "v2": 2, "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 2, "v2": 3, "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_neon_blue" },      "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 3, "v2": 4, "frontSector": 0, "backSector": 1,    "frontTexture": { "middle": "door_metal" },          "backTexture": { "middle": "door_metal" }, "flags": { "twoSided": true, "door": true } },
+    { "v1": 4, "v2": 5, "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_neon_blue" },      "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 5, "v2": 0, "frontSector": 0, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 4, "v2": 6, "frontSector": 1, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 6, "v2": 7, "frontSector": 1, "backSector": 2,    "frontTexture": null,                                "backTexture": null, "flags": { "twoSided": true } },
+    { "v1": 7, "v2": 3, "frontSector": 1, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+
+    { "v1": 8, "v2": 6, "frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 7, "v2": 9, "frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 9, "v2": 10,"frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 10,"v2": 11,"frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_neon_pink" },      "backTexture": null, "flags": { "impassable": true } },
+    { "v1": 11,"v2": 8, "frontSector": 2, "backSector": null, "frontTexture": { "middle": "wall_concrete" },       "backTexture": null, "flags": { "impassable": true } }
+  ],
+
+  "things": [
+    { "type": 1,   "position": [4, 4],   "angle": 0,   "flags": {} },
+    { "type": 100, "position": [4, 14],  "angle": 180, "flags": {} },
+    { "type": 400, "position": [2, 12],  "angle": 0,   "flags": {} },
+    { "type": 300, "position": [6, 12],  "angle": 0,   "flags": {} },
+    { "type": 600, "position": [0.5, 4], "angle": 0,   "flags": {} },
+    { "type": 600, "position": [7.5, 4], "angle": 0,   "flags": {} },
+    { "type": 600, "position": [4, 17],  "angle": 0,   "flags": {} },
+    { "type": 601, "position": [4, 9],   "angle": 0,   "flags": {} }
+  ]
+}
