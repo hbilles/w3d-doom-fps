@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TextureManager } from './TextureManager.ts';
 import { SpriteAtlasManager } from './SpriteAtlasManager.ts';
+import { TransientFxSystem } from './TransientFxSystem.ts';
 import type { IRenderer } from './IRenderer.ts';
 import type {
   CameraState,
@@ -149,6 +150,7 @@ export class ThreeJSRenderer implements IRenderer {
   private mapGroup: THREE.Group | null = null;
   private textureManager: TextureManager = new TextureManager();
   private spriteAtlasManager: SpriteAtlasManager = new SpriteAtlasManager();
+  private transientFxSystem: TransientFxSystem | null = null;
   private flickerLights: FlickerLight[] = [];
   private playerLight!: THREE.PointLight;
 
@@ -191,6 +193,7 @@ export class ThreeJSRenderer implements IRenderer {
 
     // ── Scene & Camera ───────────────────────────────────────
     this.scene = new THREE.Scene();
+    this.transientFxSystem = new TransientFxSystem(this.scene);
 
     this.camera = new THREE.PerspectiveCamera(
       90,
@@ -256,6 +259,9 @@ export class ThreeJSRenderer implements IRenderer {
   }
 
   dispose(): void {
+    this.transientFxSystem?.dispose();
+    this.transientFxSystem = null;
+
     // Remove/destroy live dynamic sprites first.
     for (const id of [...this.sprites.keys()]) {
       this.removeSprite(id);
@@ -304,6 +310,8 @@ export class ThreeJSRenderer implements IRenderer {
         this.muzzleFlashLight!.intensity = 0;
       }
     }
+
+    this.transientFxSystem?.update(dt);
   }
 
   render(
@@ -437,6 +445,8 @@ export class ThreeJSRenderer implements IRenderer {
   }
 
   unloadMap(): void {
+    this.transientFxSystem?.clear();
+
     for (const id of [...this.sprites.keys()]) {
       this.removeSprite(id);
     }
@@ -612,6 +622,22 @@ export class ThreeJSRenderer implements IRenderer {
       this.muzzleFlashLight.color.setHex(0xffaa44);
       this.muzzleFlashTimer = ThreeJSRenderer.MUZZLE_FLASH_DURATION;
     }
+  }
+
+  spawnImpactFx(position: Vec3, normal?: Vec3): void {
+    this.transientFxSystem?.spawnImpact(position, normal);
+  }
+
+  spawnExplosionFx(position: Vec3, scale: number = 1, normal?: Vec3): void {
+    this.transientFxSystem?.spawnExplosion(position, scale, normal);
+  }
+
+  spawnPickupFx(position: Vec3): void {
+    this.transientFxSystem?.spawnPickup(position);
+  }
+
+  spawnDoorFx(position: Vec3): void {
+    this.transientFxSystem?.spawnDoorPulse(position);
   }
 
   // ── Weapon Viewmodel ─────────────────────────────────────

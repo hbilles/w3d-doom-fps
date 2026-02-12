@@ -46,6 +46,10 @@ export interface IRenderer {
   setFog(color: Color, near: number, far: number): void;
   screenShake(intensity: number, duration: number): void;
   muzzleFlash(): void;
+  spawnImpactFx(position: Vec3, normal?: Vec3): void;
+  spawnExplosionFx(position: Vec3, scale?: number, normal?: Vec3): void;
+  spawnPickupFx(position: Vec3): void;
+  spawnDoorFx(position: Vec3): void;
 
   // Weapon viewmodel (2D overlay)
   drawWeaponViewmodel(state: WeaponViewmodelState): void;

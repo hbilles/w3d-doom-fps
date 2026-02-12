@@ -15,6 +15,7 @@ import { ThingType } from '../world/MapTypes.ts';
 import { WeaponSystem } from '../combat/WeaponSystem.ts';
 import { CombatSystem } from '../combat/CombatSystem.ts';
 import { WeaponState, WEAPON_DEFS, AmmoType, type WeaponDef } from '../combat/WeaponDefs.ts';
+import type { RayHit } from '../combat/HitscanRay.ts';
 
 const MESSAGE_DURATION = 2.5;
 
@@ -64,19 +65,61 @@ export class Game {
       },
     );
 
+    // Door open pulse
+    this.eventBus.on<{ sectorId: number }>(
+      'door.opened',
+      (data) => {
+        const center = this.getSectorCenter(data.sectorId);
+        if (!center) return;
+        this.renderer.spawnDoorFx({
+          x: center.x,
+          y: this.getFloorHeightAt(center.x, center.z),
+          z: center.z,
+        });
+      },
+    );
+
     // Listen for pickup collection events
-    this.eventBus.on<{ pickupId: string; pickupType: number }>(
+    this.eventBus.on<{ pickupId: string; pickupType: number; x: number; y: number; z: number }>(
       'pickup.collected',
-      () => {
-        // Could play a sound here
+      (data) => {
+        this.renderer.spawnPickupFx({ x: data.x, y: data.y, z: data.z });
+      },
+    );
+
+    // Bullet / projectile impact sparks
+    this.eventBus.on<{ x: number; z: number; normalX: number; normalZ: number }>(
+      'combat.wallHit',
+      (data) => {
+        const y = this.getFloorHeightAt(data.x, data.z) + 1.0;
+        this.renderer.spawnImpactFx(
+          { x: data.x, y, z: data.z },
+          { x: data.normalX, y: 0, z: data.normalZ },
+        );
+      },
+    );
+
+    // Projectile explosion bursts
+    this.eventBus.on<{ x: number; z: number; normalX?: number; normalZ?: number }>(
+      'combat.explosion',
+      (data) => {
+        this.renderer.spawnExplosionFx({
+          x: data.x,
+          y: this.getFloorHeightAt(data.x, data.z) + 0.85,
+          z: data.z,
+        }, 1.1, { x: data.normalX ?? 0, y: 0, z: data.normalZ ?? 0 });
       },
     );
 
     // Listen for barrel explosions
     this.eventBus.on<{ barrelId: string; x: number; z: number }>(
       'barrel.exploded',
-      () => {
-        // Could play a sound here
+      (data) => {
+        this.renderer.spawnExplosionFx({
+          x: data.x,
+          y: this.getFloorHeightAt(data.x, data.z) + 0.8,
+          z: data.z,
+        }, 1.5);
       },
     );
   }
@@ -272,6 +315,31 @@ export class Game {
     return sector ? sector.floorHeight : 0;
   }
 
+  private getSectorCenter(sectorId: number): { x: number; z: number } | null {
+    const mapData = this.world?.getMapData();
+    if (!mapData) return null;
+
+    const vertexIndices = new Set<number>();
+    for (const ld of mapData.linedefs) {
+      if (ld.frontSector === sectorId || ld.backSector === sectorId) {
+        vertexIndices.add(ld.v1);
+        vertexIndices.add(ld.v2);
+      }
+    }
+    if (vertexIndices.size === 0) return null;
+
+    let sumX = 0;
+    let sumZ = 0;
+    for (const index of vertexIndices) {
+      const v = mapData.vertices[index];
+      sumX += v[0];
+      sumZ += v[1];
+    }
+
+    const count = vertexIndices.size;
+    return { x: sumX / count, z: sumZ / count };
+  }
+
   // ── Pickup Update ──────────────────────────────────────────
 
   private updatePickups(dt: number): void {
@@ -290,6 +358,9 @@ export class Game {
         this.eventBus.emit('pickup.collected', {
           pickupId: pickup.id,
           pickupType: pickup.pickupType,
+          x: pickup.position.x,
+          y: pickup.position.y,
+          z: pickup.position.z,
         });
         this.renderer.removeSprite(pickup.id);
         this.pickups.splice(i, 1);
@@ -336,7 +407,7 @@ export class Game {
         if (hit) {
           proj.position.x = hit.x;
           proj.position.z = hit.z;
-          this.onProjectileImpact(proj, hit.x, hit.z);
+          this.onProjectileImpact(proj, hit);
           this.removeProjectile(i);
           continue;
         }
@@ -346,7 +417,13 @@ export class Game {
       for (const barrel of this.barrels) {
         if (!barrel.alive) continue;
         if (barrel.distanceTo(proj.position.x, proj.position.z) < barrel.radius + 0.3) {
-          this.onProjectileImpact(proj, proj.position.x, proj.position.z);
+          this.onProjectileImpact(proj, {
+            x: proj.position.x,
+            z: proj.position.z,
+            distance: 0,
+            normalX: 0,
+            normalZ: 0,
+          });
           barrel.takeDamage(proj.damage);
           if (!barrel.alive) {
             this.detonateBarrel(barrel);
@@ -362,10 +439,24 @@ export class Game {
     }
   }
 
-  private onProjectileImpact(proj: Projectile, hitX: number, hitZ: number): void {
+  private onProjectileImpact(proj: Projectile, hit: RayHit): void {
+    const hitX = hit.x;
+    const hitZ = hit.z;
+
     this.renderer.screenShake(0.08, 0.2);
 
-    this.eventBus.emit('combat.wallHit', { x: hitX, z: hitZ, normalX: 0, normalZ: 0 });
+    this.eventBus.emit('combat.wallHit', {
+      x: hitX,
+      z: hitZ,
+      normalX: hit.normalX,
+      normalZ: hit.normalZ,
+    });
+    this.eventBus.emit('combat.explosion', {
+      x: hitX,
+      z: hitZ,
+      normalX: hit.normalX,
+      normalZ: hit.normalZ,
+    });
 
     if (proj.splashRadius > 0) {
       this.applySplashDamage(hitX, hitZ, proj.splashRadius, proj.splashDamage);
