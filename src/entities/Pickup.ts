@@ -52,22 +52,89 @@ const PICKUP_EFFECTS: Record<PickupType, PickupEffect> = {
 export interface PickupDisplayInfo {
   label: string;
   color: string; // CSS color for procedural sprite
+  spriteKey: string;
+  worldScale: number;
 }
 
 const PICKUP_DISPLAY: Record<PickupType, PickupDisplayInfo> = {
-  [PickupType.HEALTH_SMALL]:   { label: '+', color: '#00ff44' },
-  [PickupType.HEALTH_MEDIUM]:  { label: '++', color: '#00ff88' },
-  [PickupType.HEALTH_LARGE]:   { label: '+++', color: '#44ffaa' },
-  [PickupType.AMMO_BULLETS]:   { label: 'B', color: '#ffcc00' },
-  [PickupType.AMMO_SHELLS]:    { label: 'S', color: '#ff8844' },
-  [PickupType.AMMO_ROCKETS]:   { label: 'R', color: '#ff4444' },
-  [PickupType.AMMO_BULLETS_BOX]: { label: 'BB', color: '#ffdd44' },
-  [PickupType.WEAPON_SHOTGUN]:   { label: 'SG', color: '#aa6633' },
-  [PickupType.WEAPON_AUTOMATIC]: { label: 'AR', color: '#556677' },
-  [PickupType.WEAPON_LAUNCHER]:  { label: 'RL', color: '#447744' },
-  [PickupType.KEY_RED]:    { label: 'K', color: '#ff0000' },
-  [PickupType.KEY_BLUE]:   { label: 'K', color: '#0088ff' },
-  [PickupType.KEY_YELLOW]: { label: 'K', color: '#ffff00' },
+  [PickupType.HEALTH_SMALL]: {
+    label: '+',
+    color: '#00ff44',
+    spriteKey: 'pickup_health_small',
+    worldScale: 0.8,
+  },
+  [PickupType.HEALTH_MEDIUM]: {
+    label: '++',
+    color: '#00ff88',
+    spriteKey: 'pickup_health_medium',
+    worldScale: 0.9,
+  },
+  [PickupType.HEALTH_LARGE]: {
+    label: '+++',
+    color: '#44ffaa',
+    spriteKey: 'pickup_health_large',
+    worldScale: 1.0,
+  },
+  [PickupType.AMMO_BULLETS]: {
+    label: 'B',
+    color: '#ffcc00',
+    spriteKey: 'pickup_ammo_bullets',
+    worldScale: 0.9,
+  },
+  [PickupType.AMMO_SHELLS]: {
+    label: 'S',
+    color: '#ff8844',
+    spriteKey: 'pickup_ammo_shells',
+    worldScale: 0.9,
+  },
+  [PickupType.AMMO_ROCKETS]: {
+    label: 'R',
+    color: '#ff4444',
+    spriteKey: 'pickup_ammo_rockets',
+    worldScale: 0.95,
+  },
+  [PickupType.AMMO_BULLETS_BOX]: {
+    label: 'BB',
+    color: '#ffdd44',
+    spriteKey: 'pickup_ammo_bullets_box',
+    worldScale: 0.9,
+  },
+  [PickupType.WEAPON_SHOTGUN]: {
+    label: 'SG',
+    color: '#aa6633',
+    spriteKey: 'pickup_weapon_shotgun',
+    worldScale: 1.1,
+  },
+  [PickupType.WEAPON_AUTOMATIC]: {
+    label: 'AR',
+    color: '#556677',
+    spriteKey: 'pickup_weapon_auto_rifle',
+    worldScale: 1.1,
+  },
+  [PickupType.WEAPON_LAUNCHER]: {
+    label: 'RL',
+    color: '#447744',
+    spriteKey: 'pickup_weapon_launcher',
+    worldScale: 1.15,
+  },
+  [PickupType.KEY_RED]: {
+    label: 'K',
+    color: '#ff0000',
+    spriteKey: 'pickup_key_red',
+    worldScale: 0.95,
+  },
+  [PickupType.KEY_BLUE]: {
+    label: 'K',
+    color: '#0088ff',
+    spriteKey: 'pickup_key_blue',
+    worldScale: 0.95,
+  },
+  [PickupType.KEY_YELLOW]: {
+    label: 'K',
+    color: '#ffff00',
+    spriteKey: 'pickup_key_yellow',
+    worldScale: 0.95,
+  },
 };
 
 export class Pickup {

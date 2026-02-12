@@ -47,10 +47,12 @@ export interface LightState {
 // ── Sprites ─────────────────────────────────────────────────
 
 export interface SpriteConfig {
+  /** Sprite key (frame name or animation alias) in loaded atlas metadata. */
   spriteSheet: string;
   frameWidth: number;
   frameHeight: number;
   animations: Record<string, number[]>;
+  worldScale?: number;
 }
 
 // ── Weapon Viewmodel ────────────────────────────────────────

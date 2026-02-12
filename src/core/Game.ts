@@ -240,10 +240,11 @@ export class Game {
 
         // Add sprite to renderer
         this.renderer.addSprite(pickup.id, {
-          spriteSheet: `pickup_${pickupType}`,
-          frameWidth: 32,
-          frameHeight: 32,
+          spriteSheet: pickup.display.spriteKey,
+          frameWidth: 64,
+          frameHeight: 64,
           animations: { idle: [0] },
+          worldScale: pickup.display.worldScale,
         });
         this.renderer.updateSprite(pickup.id, pickup.position, 0);
         continue;
@@ -256,9 +257,10 @@ export class Game {
 
         this.renderer.addSprite(barrel.id, {
           spriteSheet: 'barrel_explosive',
-          frameWidth: 32,
-          frameHeight: 48,
+          frameWidth: 64,
+          frameHeight: 64,
           animations: { idle: [0] },
+          worldScale: 1.15,
         });
         this.renderer.updateSprite(barrel.id, barrel.position, 0);
       }
@@ -390,9 +392,10 @@ export class Game {
 
     this.renderer.addSprite(proj.id, {
       spriteSheet: 'projectile_rocket',
-      frameWidth: 16,
-      frameHeight: 16,
+      frameWidth: 64,
+      frameHeight: 64,
       animations: { idle: [0] },
+      worldScale: 0.5,
     });
     this.renderer.updateSprite(proj.id, proj.position, 0);
   }

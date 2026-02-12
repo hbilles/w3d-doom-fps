@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TextureManager } from './TextureManager.ts';
+import { SpriteAtlasManager } from './SpriteAtlasManager.ts';
 import type { IRenderer } from './IRenderer.ts';
 import type {
   CameraState,
@@ -26,6 +27,13 @@ interface FlickerLight {
   light: THREE.PointLight;
   baseIntensity: number;
   phase: number;
+}
+
+interface SpriteInstance {
+  sprite: THREE.Sprite;
+  texture: THREE.Texture;
+  spriteKey: string;
+  frameCount: number;
 }
 
 // ── Weapon viewmodel colors (procedural until real sprites exist) ──
@@ -53,6 +61,7 @@ export class ThreeJSRenderer implements IRenderer {
   private pointLights: Map<string, THREE.PointLight> = new Map();
   private mapGroup: THREE.Group | null = null;
   private textureManager: TextureManager = new TextureManager();
+  private spriteAtlasManager: SpriteAtlasManager = new SpriteAtlasManager();
   private flickerLights: FlickerLight[] = [];
   private playerLight!: THREE.PointLight;
 
@@ -73,7 +82,7 @@ export class ThreeJSRenderer implements IRenderer {
   private hudCtx: CanvasRenderingContext2D | null = null;
 
   // ── Sprites ───────────────────────────────────────────────
-  private sprites: Map<string, THREE.Sprite> = new Map();
+  private sprites: Map<string, SpriteInstance> = new Map();
 
   // ── HUD renderer ─────────────────────────────────────────
   private hud: HUD | null = null;
@@ -127,6 +136,14 @@ export class ThreeJSRenderer implements IRenderer {
 
     // ── HUD overlay canvas ───────────────────────────────────
     this.initHudCanvas();
+
+    // Load authored sprites. If unavailable, entity rendering falls back
+    // to procedural placeholders so gameplay remains functional.
+    try {
+      await this.spriteAtlasManager.loadDefaultAtlases();
+    } catch (err) {
+      console.warn('Sprite atlas preload failed; using fallback sprites.', err);
+    }
   }
 
   private initHudCanvas(): void {
@@ -152,7 +169,13 @@ export class ThreeJSRenderer implements IRenderer {
   }
 
   dispose(): void {
+    // Remove/destroy live dynamic sprites first.
+    for (const id of [...this.sprites.keys()]) {
+      this.removeSprite(id);
+    }
+
     this.textureManager.dispose();
+    this.spriteAtlasManager.dispose();
     this.composer.dispose();
     this.renderer.dispose();
     if (this.hudCanvas) {
@@ -327,6 +350,10 @@ export class ThreeJSRenderer implements IRenderer {
   }
 
   unloadMap(): void {
+    for (const id of [...this.sprites.keys()]) {
+      this.removeSprite(id);
+    }
+
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup);
       this.mapGroup.traverse((obj) => {
@@ -347,48 +374,111 @@ export class ThreeJSRenderer implements IRenderer {
   // ── Dynamic entities ─────────────────────────────────────
 
   addSprite(id: string, config: SpriteConfig): void {
-    // Create a billboard sprite with a colored placeholder
-    const canvas = document.createElement('canvas');
-    canvas.width = config.frameWidth || 64;
-    canvas.height = config.frameHeight || 64;
-    const ctx = canvas.getContext('2d')!;
+    // Remove previous instance if this ID is being reused.
+    this.removeSprite(id);
 
-    // Draw a simple colored shape as placeholder
-    ctx.fillStyle = '#ff8800';
-    ctx.fillRect(8, 8, canvas.width - 16, canvas.height - 16);
-    ctx.strokeStyle = '#00ccff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+    const atlasSprite = this.spriteAtlasManager.createSpriteMaterial(config.spriteSheet);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
+    let sprite: THREE.Sprite;
+    let texture: THREE.Texture;
+    let frameCount = 1;
+    let frameWidth = config.frameWidth;
+    let frameHeight = config.frameHeight;
 
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-    });
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(1, 1, 1);
+    if (atlasSprite) {
+      sprite = new THREE.Sprite(atlasSprite.material);
+      texture = atlasSprite.texture;
+      frameCount = atlasSprite.frameCount;
+      frameWidth = atlasSprite.frameWidth;
+      frameHeight = atlasSprite.frameHeight;
+    } else {
+      const fallbackTexture = this.createFallbackSpriteTexture(
+        config.spriteSheet,
+        config.frameWidth || 64,
+        config.frameHeight || 64,
+      );
+      const material = new THREE.SpriteMaterial({
+        map: fallbackTexture,
+        transparent: true,
+      });
+      sprite = new THREE.Sprite(material);
+      texture = fallbackTexture;
+    }
+
+    const aspect = frameHeight / Math.max(1, frameWidth);
+    const baseScale = config.worldScale ?? 1;
+    sprite.scale.set(baseScale, baseScale * aspect, 1);
     this.scene.add(sprite);
-    this.sprites.set(id, sprite);
+    this.sprites.set(id, {
+      sprite,
+      texture,
+      spriteKey: config.spriteSheet,
+      frameCount,
+    });
   }
 
-  updateSprite(id: string, position: Vec3, _frame: number): void {
-    const sprite = this.sprites.get(id);
-    if (sprite) {
-      sprite.position.set(position.x, position.y, position.z);
+  updateSprite(id: string, position: Vec3, frame: number): void {
+    const entry = this.sprites.get(id);
+    if (entry) {
+      entry.sprite.position.set(position.x, position.y, position.z);
+      if (entry.frameCount > 1 || this.spriteAtlasManager.hasSprite(entry.spriteKey)) {
+        this.spriteAtlasManager.applyFrame(entry.texture, entry.spriteKey, frame);
+      }
     }
   }
 
   removeSprite(id: string): void {
-    const sprite = this.sprites.get(id);
-    if (sprite) {
-      this.scene.remove(sprite);
-      sprite.material.dispose();
-      if (sprite.material.map) sprite.material.map.dispose();
+    const entry = this.sprites.get(id);
+    if (entry) {
+      this.scene.remove(entry.sprite);
+      entry.sprite.material.dispose();
+      entry.texture.dispose();
       this.sprites.delete(id);
     }
+  }
+
+  private createFallbackSpriteTexture(
+    spriteKey: string,
+    width: number,
+    height: number,
+  ): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+
+    // Stable pseudo-random color derived from key name.
+    let hash = 0;
+    for (let i = 0; i < spriteKey.length; i++) {
+      hash = (hash * 31 + spriteKey.charCodeAt(i)) & 0xffffff;
+    }
+    const r = 80 + ((hash >> 16) & 0x7f);
+    const g = 80 + ((hash >> 8) & 0x7f);
+    const b = 80 + (hash & 0x7f);
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fillRect(6, 6, width - 12, height - 12);
+    ctx.strokeStyle = '#00ccff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(6, 6, width - 12, height - 12);
+
+    const label = spriteKey
+      .split('_')
+      .map((chunk) => chunk[0])
+      .join('')
+      .slice(0, 3)
+      .toUpperCase();
+    ctx.fillStyle = '#101018';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, width / 2, height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    return texture;
   }
 
   // ── Effects ──────────────────────────────────────────────
