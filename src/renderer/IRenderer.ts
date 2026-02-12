@@ -6,6 +6,7 @@ import type {
   RenderableEntity,
   SpriteConfig,
   Vec3,
+  WeaponViewmodelState,
 } from './RenderTypes.ts';
 import type { MapData } from '../world/MapTypes.ts';
 
@@ -15,7 +16,7 @@ export interface IRenderer {
   dispose(): void;
 
   // Per-frame
-  beginFrame(): void;
+  beginFrame(dt: number): void;
   render(
     camera: CameraState,
     renderables: RenderableEntity[],
@@ -44,9 +45,16 @@ export interface IRenderer {
   removePointLight(id: string): void;
   setFog(color: Color, near: number, far: number): void;
   screenShake(intensity: number, duration: number): void;
+  muzzleFlash(): void;
+
+  // Weapon viewmodel (2D overlay)
+  drawWeaponViewmodel(state: WeaponViewmodelState): void;
 
   // HUD (2D overlay)
   drawHUD(hudState: HUDState): void;
+
+  // Dynamic world updates
+  updateSectorCeiling(sectorId: number, newHeight: number): void;
 
   // Resize handling
   resize(width: number, height: number): void;

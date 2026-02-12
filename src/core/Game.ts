@@ -1,28 +1,84 @@
 import type { IRenderer } from '../renderer/IRenderer.ts';
+import type { HUDState, WeaponViewmodelState } from '../renderer/RenderTypes.ts';
 import { EventBus } from './EventBus.ts';
 import { GameState } from './GameState.ts';
 import { InputSystem } from '../systems/InputSystem.ts';
 import { PhysicsSystem } from '../systems/PhysicsSystem.ts';
+import { DoorSystem } from '../systems/DoorSystem.ts';
 import { Player } from '../entities/Player.ts';
+import { Projectile } from '../entities/Projectile.ts';
+import { Pickup, thingTypeToPickupType } from '../entities/Pickup.ts';
+import { Barrel } from '../entities/Barrel.ts';
 import { MapLoader } from '../world/MapLoader.ts';
 import { World } from '../world/World.ts';
+import { ThingType } from '../world/MapTypes.ts';
+import { WeaponSystem } from '../combat/WeaponSystem.ts';
+import { CombatSystem } from '../combat/CombatSystem.ts';
+import { WeaponState, WEAPON_DEFS, AmmoType, type WeaponDef } from '../combat/WeaponDefs.ts';
+
+const MESSAGE_DURATION = 2.5;
 
 export class Game {
   private renderer: IRenderer;
   private eventBus: EventBus;
   private inputSystem: InputSystem;
   private physicsSystem: PhysicsSystem;
+  private doorSystem: DoorSystem;
+  private weaponSystem: WeaponSystem;
+  private combatSystem: CombatSystem;
   private player: Player | null = null;
   private world: World | null = null;
   private state: GameState = GameState.MENU;
   private lastTime: number = 0;
   private animationFrameId: number = 0;
 
+  // ── Entity management ──────────────────────────────────────
+  private projectiles: Projectile[] = [];
+  private pickups: Pickup[] = [];
+  private barrels: Barrel[] = [];
+
+  // ── HUD message ────────────────────────────────────────────
+  private hudMessage: string = '';
+  private hudMessageTimer: number = 0;
+
   constructor(renderer: IRenderer) {
     this.renderer = renderer;
     this.eventBus = new EventBus();
     this.inputSystem = new InputSystem();
     this.physicsSystem = new PhysicsSystem();
+    this.doorSystem = new DoorSystem();
+    this.weaponSystem = new WeaponSystem(this.eventBus);
+    this.combatSystem = new CombatSystem();
+
+    // Listen for weapon fire events
+    this.eventBus.on<{ weaponDef: WeaponDef; playerX: number; playerZ: number; yaw: number }>(
+      'weapon.fire',
+      (data) => this.onWeaponFire(data),
+    );
+
+    // Listen for door locked events
+    this.eventBus.on<{ sectorId: number; keyRequired: string }>(
+      'door.locked',
+      (data) => {
+        this.showMessage(`You need the ${data.keyRequired} key`);
+      },
+    );
+
+    // Listen for pickup collection events
+    this.eventBus.on<{ pickupId: string; pickupType: number }>(
+      'pickup.collected',
+      () => {
+        // Could play a sound here
+      },
+    );
+
+    // Listen for barrel explosions
+    this.eventBus.on<{ barrelId: string; x: number; z: number }>(
+      'barrel.exploded',
+      () => {
+        // Could play a sound here
+      },
+    );
   }
 
   getEventBus(): EventBus {
@@ -36,8 +92,13 @@ export class Game {
     // Load map
     const mapData = await MapLoader.load(mapName);
     this.world = new World(mapData);
+
+    // Door system must init BEFORE renderer so it can mutate sector
+    // ceiling heights to their closed position before geometry is built.
+    this.doorSystem.init(mapData, this.eventBus, this.renderer);
     this.renderer.loadMap(mapData);
     this.physicsSystem.init(mapData);
+    this.combatSystem.init(mapData, this.eventBus);
 
     // Spawn player at map start
     const start = this.world.getPlayerStart();
@@ -50,6 +111,9 @@ export class Game {
       this.player.sectorFloorHeight = sector.floorHeight;
     }
 
+    // Spawn pickups and barrels from map things
+    this.spawnEntitiesFromMap(mapData);
+
     // Handle resize
     window.addEventListener('resize', () => {
       this.renderer.resize(window.innerWidth, window.innerHeight);
@@ -60,7 +124,7 @@ export class Game {
       if (this.inputSystem.isPointerLocked()) {
         if (this.state === GameState.PAUSED) {
           this.state = GameState.PLAYING;
-          this.lastTime = performance.now(); // Reset dt to avoid jump
+          this.lastTime = performance.now();
           this.eventBus.emit('game.resumed', null);
         }
       } else {
@@ -98,14 +162,15 @@ export class Game {
     const dt = Math.min((time - this.lastTime) / 1000, 0.1);
     this.lastTime = time;
 
-    if (this.state !== GameState.PLAYING) {
-      // Still render the scene while paused (for flickering lights, etc.)
-      this.renderFrame();
-      return;
+    this.renderer.beginFrame(dt);
+
+    if (this.state === GameState.PLAYING) {
+      this.update(dt);
     }
 
-    this.update(dt);
     this.renderFrame();
+
+    this.inputSystem.endFrame();
   };
 
   private update(dt: number): void {
@@ -115,12 +180,10 @@ export class Game {
     const oldX = this.player.position.x;
     const oldZ = this.player.position.z;
 
-    // Player computes movement from input (moves freely, no collision)
+    // Player computes movement from input
     this.player.update(dt, this.inputSystem);
 
-    // Physics resolves collision and determines floor height.
-    // Use the actual (non-lerped) sector floor height for step-up checks,
-    // so consecutive steps don't fail due to visual lerp lag.
+    // Physics resolves collision and determines floor height
     const result = this.physicsSystem.resolveMovement(
       oldX,
       oldZ,
@@ -131,21 +194,382 @@ export class Game {
 
     this.player.position.x = result.x;
     this.player.position.z = result.z;
-
-    // Update the true sector floor height immediately
     this.player.sectorFloorHeight = result.floorHeight;
 
-    // Lerp the visual floor height for smooth camera transitions
+    // Lerp the visual floor height
     const lerpFactor = Math.min(1, dt * 15);
     this.player.floorHeight +=
       (result.floorHeight - this.player.floorHeight) * lerpFactor;
+
+    // Update weapon system
+    this.weaponSystem.update(dt, this.inputSystem, this.player);
+
+    // Handle Use key (doors)
+    if (this.inputSystem.wasKeyPressed('KeyE') || this.inputSystem.wasKeyPressed('Space')) {
+      this.doorSystem.tryActivate(this.player);
+    }
+
+    // Update door system
+    this.doorSystem.update(dt, this.player);
+
+    // Update projectiles
+    this.updateProjectiles(dt);
+
+    // Update pickups
+    this.updatePickups(dt);
+
+    // Update HUD message timer
+    if (this.hudMessageTimer > 0) {
+      this.hudMessageTimer -= dt;
+    }
   }
+
+  // ── Entity Spawning ────────────────────────────────────────
+
+  private spawnEntitiesFromMap(mapData: import('../world/MapTypes.ts').MapData): void {
+    for (const thing of mapData.things) {
+      const x = thing.position[0];
+      const z = thing.position[1];
+      const floorHeight = this.getFloorHeightAt(x, z);
+
+      // Pickups
+      const pickupType = thingTypeToPickupType(thing.type);
+      if (pickupType !== null) {
+        const pickup = new Pickup(pickupType, x, z, floorHeight);
+        this.pickups.push(pickup);
+
+        // Add sprite to renderer
+        this.renderer.addSprite(pickup.id, {
+          spriteSheet: `pickup_${pickupType}`,
+          frameWidth: 32,
+          frameHeight: 32,
+          animations: { idle: [0] },
+        });
+        this.renderer.updateSprite(pickup.id, pickup.position, 0);
+        continue;
+      }
+
+      // Explosive barrels
+      if (thing.type === ThingType.BARREL_EXPLOSIVE) {
+        const barrel = new Barrel(x, z, floorHeight);
+        this.barrels.push(barrel);
+
+        this.renderer.addSprite(barrel.id, {
+          spriteSheet: 'barrel_explosive',
+          frameWidth: 32,
+          frameHeight: 48,
+          animations: { idle: [0] },
+        });
+        this.renderer.updateSprite(barrel.id, barrel.position, 0);
+      }
+    }
+  }
+
+  private getFloorHeightAt(x: number, z: number): number {
+    const sector = this.physicsSystem.findSectorAt(x, z);
+    return sector ? sector.floorHeight : 0;
+  }
+
+  // ── Pickup Update ──────────────────────────────────────────
+
+  private updatePickups(dt: number): void {
+    if (!this.player) return;
+
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const pickup = this.pickups[i];
+      if (pickup.collected) {
+        this.renderer.removeSprite(pickup.id);
+        this.pickups.splice(i, 1);
+        continue;
+      }
+
+      const wasCollected = pickup.update(dt, this.player);
+      if (wasCollected) {
+        this.eventBus.emit('pickup.collected', {
+          pickupId: pickup.id,
+          pickupType: pickup.pickupType,
+        });
+        this.renderer.removeSprite(pickup.id);
+        this.pickups.splice(i, 1);
+      } else {
+        // Update sprite position with bob
+        const bobPos = {
+          x: pickup.position.x,
+          y: pickup.position.y + pickup.getBobOffset(),
+          z: pickup.position.z,
+        };
+        this.renderer.updateSprite(pickup.id, bobPos, 0);
+      }
+    }
+  }
+
+  // ── Projectile Update ──────────────────────────────────────
+
+  private updateProjectiles(dt: number): void {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const proj = this.projectiles[i];
+      if (!proj.alive) {
+        this.removeProjectile(i);
+        continue;
+      }
+
+      const prevX = proj.position.x;
+      const prevZ = proj.position.z;
+      const move = proj.update(dt);
+
+      if (!proj.alive) {
+        this.removeProjectile(i);
+        continue;
+      }
+
+      // Check wall collision
+      const moveDist = Math.sqrt(move.dx * move.dx + move.dz * move.dz);
+      if (moveDist > 0.001) {
+        const hit = this.combatSystem.raycastWalls(
+          prevX, prevZ,
+          move.dx, move.dz,
+          moveDist,
+        );
+
+        if (hit) {
+          proj.position.x = hit.x;
+          proj.position.z = hit.z;
+          this.onProjectileImpact(proj, hit.x, hit.z);
+          this.removeProjectile(i);
+          continue;
+        }
+      }
+
+      // Check barrel collision
+      for (const barrel of this.barrels) {
+        if (!barrel.alive) continue;
+        if (barrel.distanceTo(proj.position.x, proj.position.z) < barrel.radius + 0.3) {
+          this.onProjectileImpact(proj, proj.position.x, proj.position.z);
+          barrel.takeDamage(proj.damage);
+          if (!barrel.alive) {
+            this.detonateBarrel(barrel);
+          }
+          this.removeProjectile(i);
+          break;
+        }
+      }
+
+      if (proj.alive) {
+        this.renderer.updateSprite(proj.id, proj.position, 0);
+      }
+    }
+  }
+
+  private onProjectileImpact(proj: Projectile, hitX: number, hitZ: number): void {
+    this.renderer.screenShake(0.08, 0.2);
+
+    this.eventBus.emit('combat.wallHit', { x: hitX, z: hitZ, normalX: 0, normalZ: 0 });
+
+    if (proj.splashRadius > 0) {
+      this.applySplashDamage(hitX, hitZ, proj.splashRadius, proj.splashDamage);
+    }
+  }
+
+  private spawnProjectile(
+    x: number,
+    z: number,
+    yaw: number,
+    weaponDef: WeaponDef,
+  ): void {
+    const floorHeight = this.player?.sectorFloorHeight ?? 0;
+    const proj = new Projectile({
+      x,
+      z,
+      yaw,
+      floorHeight,
+      weaponDef,
+      ownerId: 'player',
+    });
+
+    this.projectiles.push(proj);
+
+    this.renderer.addSprite(proj.id, {
+      spriteSheet: 'projectile_rocket',
+      frameWidth: 16,
+      frameHeight: 16,
+      animations: { idle: [0] },
+    });
+    this.renderer.updateSprite(proj.id, proj.position, 0);
+  }
+
+  private removeProjectile(index: number): void {
+    const proj = this.projectiles[index];
+    this.renderer.removeSprite(proj.id);
+    this.projectiles.splice(index, 1);
+  }
+
+  // ── Barrel / Splash Damage ─────────────────────────────────
+
+  private applySplashDamage(x: number, z: number, radius: number, damage: number): void {
+    // Damage player
+    if (this.player) {
+      const dx = this.player.position.x - x;
+      const dz = this.player.position.z - z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < radius) {
+        const falloff = 1 - dist / radius;
+        const dmg = Math.round(damage * falloff);
+        if (dmg > 0) {
+          this.player.health = Math.max(0, this.player.health - dmg);
+          this.eventBus.emit('player.damage', { damage: dmg, source: 'splash' });
+        }
+      }
+    }
+
+    // Damage barrels (can chain-react)
+    const barrelsToDetonate: Barrel[] = [];
+    for (const barrel of this.barrels) {
+      if (!barrel.alive) continue;
+      const dist = barrel.distanceTo(x, z);
+      if (dist < radius) {
+        const falloff = 1 - dist / radius;
+        const dmg = Math.round(damage * falloff);
+        if (dmg > 0) {
+          const died = barrel.takeDamage(dmg);
+          if (died) {
+            barrelsToDetonate.push(barrel);
+          }
+        }
+      }
+    }
+
+    // Chain-detonate barrels
+    for (const barrel of barrelsToDetonate) {
+      this.detonateBarrel(barrel);
+    }
+  }
+
+  private detonateBarrel(barrel: Barrel): void {
+    const explosion = barrel.getExplosion();
+
+    this.renderer.screenShake(0.1, 0.25);
+    this.eventBus.emit('barrel.exploded', {
+      barrelId: barrel.id,
+      x: explosion.x,
+      z: explosion.z,
+    });
+
+    // Remove barrel sprite
+    this.renderer.removeSprite(barrel.id);
+
+    // Apply splash damage from barrel explosion
+    this.applySplashDamage(explosion.x, explosion.z, explosion.radius, explosion.damage);
+  }
+
+  // ── HUD Message ────────────────────────────────────────────
+
+  private showMessage(text: string): void {
+    this.hudMessage = text;
+    this.hudMessageTimer = MESSAGE_DURATION;
+  }
+
+  // ── Render ─────────────────────────────────────────────────
 
   private renderFrame(): void {
     if (!this.player) return;
 
-    this.renderer.beginFrame();
     this.renderer.render(this.player.getCameraState(), [], []);
+
+    // Draw weapon viewmodel on HUD canvas
+    const weaponState = this.weaponSystem.getState();
+    const viewmodelState: WeaponViewmodelState = {
+      weaponId: this.weaponSystem.getCurrentWeapon(),
+      state: weaponState,
+      offset: this.weaponSystem.viewmodelOffset,
+      isFiring: weaponState === WeaponState.FIRE,
+    };
+    this.renderer.drawWeaponViewmodel(viewmodelState);
+
+    // Draw HUD
+    const currentWeaponDef = WEAPON_DEFS[this.weaponSystem.getCurrentWeapon()];
+    const hudState: HUDState = {
+      health: this.player.health,
+      maxHealth: this.player.maxHealth,
+      armor: this.player.armor,
+      ammo: currentWeaponDef.ammoType !== AmmoType.NONE
+        ? this.player.ammo[currentWeaponDef.ammoType]
+        : 0,
+      maxAmmo: currentWeaponDef.ammoType !== AmmoType.NONE
+        ? this.player.maxAmmo[currentWeaponDef.ammoType]
+        : 0,
+      weaponName: currentWeaponDef.name,
+      keys: { ...this.player.keys },
+      message: this.hudMessageTimer > 0 ? this.hudMessage : undefined,
+      messageTimer: this.hudMessageTimer > 0 ? this.hudMessageTimer : undefined,
+    };
+    this.renderer.drawHUD(hudState);
+
     this.renderer.endFrame();
+  }
+
+  // ── Combat Event Handlers ────────────────────────────────
+
+  private onWeaponFire(data: {
+    weaponDef: WeaponDef;
+    playerX: number;
+    playerZ: number;
+    yaw: number;
+  }): void {
+    const { weaponDef, playerX, playerZ, yaw } = data;
+
+    // Screen shake
+    this.renderer.screenShake(weaponDef.screenShake * 0.05, 0.15);
+
+    // Muzzle flash (not for melee)
+    if (!weaponDef.isMelee) {
+      this.renderer.muzzleFlash();
+    }
+
+    if (weaponDef.isProjectile) {
+      this.spawnProjectile(playerX, playerZ, yaw, weaponDef);
+      return;
+    }
+
+    // Fire hitscan(s)
+    const results = this.combatSystem.fireWeapon(weaponDef, playerX, playerZ, yaw);
+
+    // Check hitscan results against barrels
+    for (const result of results) {
+      if (result.wallHit) {
+        // Check if any barrel is between player and wall hit
+        for (const barrel of this.barrels) {
+          if (!barrel.alive) continue;
+          const dist = barrel.distanceTo(playerX, playerZ);
+          if (dist < result.wallHit.distance) {
+            // Check if ray passes through barrel
+            const barrelDist = this.pointToRayDist(
+              barrel.position.x, barrel.position.z,
+              playerX, playerZ,
+              result.wallHit.x - playerX, result.wallHit.z - playerZ,
+            );
+            if (barrelDist < barrel.radius) {
+              const died = barrel.takeDamage(weaponDef.damage);
+              if (died) {
+                this.detonateBarrel(barrel);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Distance from point (px, pz) to ray from (ox, oz) in direction (dx, dz). */
+  private pointToRayDist(
+    px: number, pz: number,
+    ox: number, oz: number,
+    dx: number, dz: number,
+  ): number {
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.0001) return Infinity;
+    // Cross product magnitude / length = perpendicular distance
+    const cross = Math.abs((px - ox) * dz - (pz - oz) * dx);
+    return cross / len;
   }
 }

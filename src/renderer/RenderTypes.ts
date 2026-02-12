@@ -53,6 +53,15 @@ export interface SpriteConfig {
   animations: Record<string, number[]>;
 }
 
+// ── Weapon Viewmodel ────────────────────────────────────────
+
+export interface WeaponViewmodelState {
+  weaponId: number;
+  state: string;        // 'ready' | 'fire' | 'recovery' | 'lower' | 'raise'
+  offset: number;       // 0 = fully up, 1 = fully down (for switching animation)
+  isFiring: boolean;    // True during the fire frame
+}
+
 // ── HUD ─────────────────────────────────────────────────────
 
 export interface HUDState {
@@ -63,4 +72,6 @@ export interface HUDState {
   maxAmmo: number;
   weaponName: string;
   keys: { red: boolean; blue: boolean; yellow: boolean };
+  message?: string;      // Temporary message ("You need the red key")
+  messageTimer?: number; // Remaining display time
 }

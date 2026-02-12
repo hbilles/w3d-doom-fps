@@ -13,9 +13,11 @@ import type {
   RenderableEntity,
   SpriteConfig,
   Vec3,
+  WeaponViewmodelState,
 } from './RenderTypes.ts';
-import type { MapData, LineDef } from '../world/MapTypes.ts';
+import type { MapData, LineDef, Sector } from '../world/MapTypes.ts';
 import { ThingType } from '../world/MapTypes.ts';
+import { HUD } from '../ui/HUD.ts';
 
 // ── Neon colors for light things ─────────────────────────────
 const NEON_COLORS: number[] = [0x00ccff, 0xff8800, 0xff0066, 0x00ff88, 0x0066ff];
@@ -26,6 +28,23 @@ interface FlickerLight {
   phase: number;
 }
 
+// ── Weapon viewmodel colors (procedural until real sprites exist) ──
+const WEAPON_COLORS: Record<number, string> = {
+  1: '#888888', // Baton - grey
+  2: '#cccccc', // Pistol - silver
+  3: '#aa6633', // Shotgun - brown
+  4: '#556677', // Auto-Rifle - gunmetal
+  5: '#447744', // Launcher - olive
+};
+
+const WEAPON_SHAPES: Record<number, string> = {
+  1: 'baton',
+  2: 'pistol',
+  3: 'shotgun',
+  4: 'rifle',
+  5: 'launcher',
+};
+
 export class ThreeJSRenderer implements IRenderer {
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
@@ -35,7 +54,36 @@ export class ThreeJSRenderer implements IRenderer {
   private mapGroup: THREE.Group | null = null;
   private textureManager: TextureManager = new TextureManager();
   private flickerLights: FlickerLight[] = [];
-  private playerLight!: THREE.PointLight; // Subtle headlamp that follows the player
+  private playerLight!: THREE.PointLight;
+
+  // ── Screen shake state ────────────────────────────────────
+  private shakeIntensity: number = 0;
+  private shakeDuration: number = 0;
+  private shakeRemaining: number = 0;
+  private shakeOffsetX: number = 0;
+  private shakeOffsetY: number = 0;
+
+  // ── Muzzle flash state ────────────────────────────────────
+  private muzzleFlashLight: THREE.PointLight | null = null;
+  private muzzleFlashTimer: number = 0;
+  private static readonly MUZZLE_FLASH_DURATION = 0.06;
+
+  // ── HUD canvas ────────────────────────────────────────────
+  private hudCanvas: HTMLCanvasElement | null = null;
+  private hudCtx: CanvasRenderingContext2D | null = null;
+
+  // ── Sprites ───────────────────────────────────────────────
+  private sprites: Map<string, THREE.Sprite> = new Map();
+
+  // ── HUD renderer ─────────────────────────────────────────
+  private hud: HUD | null = null;
+
+  // ── Sector meshes for dynamic updates (doors) ─────────────
+  /** Ceiling meshes indexed by sector ID — updated when doors open/close. */
+  private sectorCeilingMeshes: Map<number, THREE.Mesh> = new Map();
+  /** Upper/middle wall meshes for two-sided linedefs adjacent to a sector. */
+  private sectorWallMeshes: Map<number, THREE.Mesh[]> = new Map();
+  private currentMapData: MapData | null = null;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     // ── WebGL Renderer ───────────────────────────────────────
@@ -69,30 +117,82 @@ export class ThreeJSRenderer implements IRenderer {
     this.composer.addPass(bloomPass);
     this.composer.addPass(new OutputPass());
 
-    // Player headlamp — warm white light that follows the camera,
-    // ensures you can always see nearby geometry
+    // Player headlamp
     this.playerLight = new THREE.PointLight(0xeeddcc, 2.5, 18);
     this.scene.add(this.playerLight);
+
+    // Muzzle flash light (starts disabled)
+    this.muzzleFlashLight = new THREE.PointLight(0xffaa44, 0, 15);
+    this.scene.add(this.muzzleFlashLight);
+
+    // ── HUD overlay canvas ───────────────────────────────────
+    this.initHudCanvas();
+  }
+
+  private initHudCanvas(): void {
+    // Look for existing HUD canvas or create one
+    let hudCanvas = document.getElementById('hud-canvas') as HTMLCanvasElement | null;
+    if (!hudCanvas) {
+      hudCanvas = document.createElement('canvas');
+      hudCanvas.id = 'hud-canvas';
+      hudCanvas.style.position = 'absolute';
+      hudCanvas.style.top = '0';
+      hudCanvas.style.left = '0';
+      hudCanvas.style.width = '100%';
+      hudCanvas.style.height = '100%';
+      hudCanvas.style.pointerEvents = 'none';
+      hudCanvas.style.zIndex = '5';
+      document.body.appendChild(hudCanvas);
+    }
+    hudCanvas.width = window.innerWidth;
+    hudCanvas.height = window.innerHeight;
+    this.hudCanvas = hudCanvas;
+    this.hudCtx = hudCanvas.getContext('2d')!;
+    this.hud = new HUD(this.hudCtx, hudCanvas.width, hudCanvas.height);
   }
 
   dispose(): void {
     this.textureManager.dispose();
     this.composer.dispose();
     this.renderer.dispose();
+    if (this.hudCanvas) {
+      this.hudCanvas.remove();
+      this.hudCanvas = null;
+      this.hudCtx = null;
+    }
   }
 
   // ── Per-frame ──────────────────────────────────────────────
 
-  beginFrame(): void {
+  beginFrame(dt: number): void {
     // Animate flickering lights
     const time = performance.now() / 1000;
     for (const fl of this.flickerLights) {
-      // Combine two sine waves at different frequencies for irregular flicker
       const wave =
         0.5 +
         0.3 * Math.sin(time * 8.7 + fl.phase) +
         0.2 * Math.sin(time * 13.3 + fl.phase * 2.1);
       fl.light.intensity = fl.baseIntensity * Math.max(0.1, wave);
+    }
+
+    // Update screen shake
+    if (this.shakeRemaining > 0) {
+      this.shakeRemaining -= dt;
+      const factor = Math.max(0, this.shakeRemaining / this.shakeDuration);
+      const currentIntensity = this.shakeIntensity * factor;
+      this.shakeOffsetX = (Math.random() - 0.5) * 2 * currentIntensity;
+      this.shakeOffsetY = (Math.random() - 0.5) * 2 * currentIntensity;
+    } else {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+    }
+
+    // Update muzzle flash
+    if (this.muzzleFlashTimer > 0) {
+      this.muzzleFlashTimer -= dt;
+      if (this.muzzleFlashTimer <= 0) {
+        this.muzzleFlashLight!.intensity = 0;
+      }
     }
   }
 
@@ -101,13 +201,23 @@ export class ThreeJSRenderer implements IRenderer {
     _renderables: RenderableEntity[],
     _lights: LightState[],
   ): void {
-    this.camera.position.set(camera.position.x, camera.height, camera.position.z);
+    // Apply camera position with screen shake offset
+    this.camera.position.set(
+      camera.position.x + this.shakeOffsetX,
+      camera.height + this.shakeOffsetY,
+      camera.position.z,
+    );
     this.camera.rotation.set(0, camera.yaw, 0);
     this.camera.fov = camera.fov;
     this.camera.updateProjectionMatrix();
 
     // Move player headlamp to camera position
     this.playerLight.position.copy(this.camera.position);
+
+    // Move muzzle flash light to camera position
+    if (this.muzzleFlashLight && this.muzzleFlashTimer > 0) {
+      this.muzzleFlashLight.position.copy(this.camera.position);
+    }
 
     this.composer.render();
   }
@@ -122,15 +232,43 @@ export class ThreeJSRenderer implements IRenderer {
     this.unloadMap();
     this.mapGroup = new THREE.Group();
     this.flickerLights = [];
+    this.currentMapData = mapData;
+    this.sectorCeilingMeshes.clear();
+    this.sectorWallMeshes.clear();
+
+    // Identify door sectors — the actual door corridor, not the adjacent rooms.
+    // Matches DoorSystem logic: the door sector is backSector ?? frontSector.
+    const doorSectorIds = new Set<number>();
+    for (const ld of mapData.linedefs) {
+      if (ld.flags?.door) {
+        const doorSectorId = ld.backSector ?? ld.frontSector;
+        if (doorSectorId !== null) doorSectorIds.add(doorSectorId);
+      }
+    }
 
     // Build wall geometry from linedefs
+    // For two-sided linedefs adjacent to door sectors, store the meshes separately
     for (const linedef of mapData.linedefs) {
-      this.buildWallsFromLinedef(linedef, mapData);
+      const touchesDoor =
+        (linedef.frontSector !== null && doorSectorIds.has(linedef.frontSector)) ||
+        (linedef.backSector !== null && doorSectorIds.has(linedef.backSector));
+
+      if (touchesDoor && linedef.frontSector !== null && linedef.backSector !== null) {
+        // Two-sided linedef adjacent to a door — build walls and track them
+        this.buildDoorAdjacentWalls(linedef, mapData, doorSectorIds);
+      } else {
+        this.buildWallsFromLinedef(linedef, mapData);
+      }
     }
 
     // Build floor/ceiling geometry from sectors
     for (const sector of mapData.sectors) {
-      this.buildSectorSurfaces(sector.id, mapData);
+      if (doorSectorIds.has(sector.id)) {
+        // Door sector — track ceiling mesh separately for dynamic updates
+        this.buildDoorSectorSurfaces(sector.id, mapData);
+      } else {
+        this.buildSectorSurfaces(sector.id, mapData);
+      }
     }
 
     // Place lights from things
@@ -140,9 +278,8 @@ export class ThreeJSRenderer implements IRenderer {
         const color = NEON_COLORS[lightIdx % NEON_COLORS.length];
         const baseIntensity = thing.type === ThingType.LIGHT_NEON ? 8 : 6;
 
-        // Determine the floor height at the light's position
         const floorH = this.getFloorHeightAt(thing.position[0], thing.position[1], mapData);
-        const lightY = floorH + 2.5; // Mid-height — illuminates walls and floor
+        const lightY = floorH + 2.5;
 
         // Emissive marker (glowing sphere)
         const geo = new THREE.SphereGeometry(0.12, 8, 8);
@@ -155,12 +292,11 @@ export class ThreeJSRenderer implements IRenderer {
         marker.position.set(thing.position[0], lightY, thing.position[1]);
         this.mapGroup.add(marker);
 
-        // Point light — generous range to fill rooms
+        // Point light
         const light = new THREE.PointLight(color, baseIntensity, 20);
         light.position.set(thing.position[0], lightY, thing.position[1]);
         this.mapGroup.add(light);
 
-        // Track flickering lights for animation
         if (thing.type === ThingType.LIGHT_FLICKER) {
           this.flickerLights.push({
             light,
@@ -173,14 +309,14 @@ export class ThreeJSRenderer implements IRenderer {
       }
     }
 
-    // Hemisphere light — sky (blue-grey) + ground (dark indigo) fill
+    // Hemisphere light
     const hemiLight = new THREE.HemisphereLight(0x8888aa, 0x333355, 0.8);
     this.mapGroup.add(hemiLight);
 
-    // Ambient for baseline visibility everywhere
+    // Ambient
     this.mapGroup.add(new THREE.AmbientLight(0x9999bb, 0.35));
 
-    // Fog — use map density but cap it to prevent over-darkening
+    // Fog
     const fogDensity = Math.min(mapData.fogDensity, 0.03);
     this.scene.fog = new THREE.FogExp2(
       new THREE.Color(mapData.fogColor.r, mapData.fogColor.g, mapData.fogColor.b),
@@ -193,7 +329,6 @@ export class ThreeJSRenderer implements IRenderer {
   unloadMap(): void {
     if (this.mapGroup) {
       this.scene.remove(this.mapGroup);
-      // Dispose geometries and materials in the group
       this.mapGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
@@ -204,15 +339,59 @@ export class ThreeJSRenderer implements IRenderer {
       });
       this.mapGroup = null;
     }
+    this.currentMapData = null;
+    this.sectorCeilingMeshes.clear();
+    this.sectorWallMeshes.clear();
   }
 
-  // ── Dynamic entities (stubs) ───────────────────────────────
+  // ── Dynamic entities ─────────────────────────────────────
 
-  addSprite(_id: string, _config: SpriteConfig): void {}
-  updateSprite(_id: string, _position: Vec3, _frame: number): void {}
-  removeSprite(_id: string): void {}
+  addSprite(id: string, config: SpriteConfig): void {
+    // Create a billboard sprite with a colored placeholder
+    const canvas = document.createElement('canvas');
+    canvas.width = config.frameWidth || 64;
+    canvas.height = config.frameHeight || 64;
+    const ctx = canvas.getContext('2d')!;
 
-  // ── Effects ────────────────────────────────────────────────
+    // Draw a simple colored shape as placeholder
+    ctx.fillStyle = '#ff8800';
+    ctx.fillRect(8, 8, canvas.width - 16, canvas.height - 16);
+    ctx.strokeStyle = '#00ccff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(1, 1, 1);
+    this.scene.add(sprite);
+    this.sprites.set(id, sprite);
+  }
+
+  updateSprite(id: string, position: Vec3, _frame: number): void {
+    const sprite = this.sprites.get(id);
+    if (sprite) {
+      sprite.position.set(position.x, position.y, position.z);
+    }
+  }
+
+  removeSprite(id: string): void {
+    const sprite = this.sprites.get(id);
+    if (sprite) {
+      this.scene.remove(sprite);
+      sprite.material.dispose();
+      if (sprite.material.map) sprite.material.map.dispose();
+      this.sprites.delete(id);
+    }
+  }
+
+  // ── Effects ──────────────────────────────────────────────
 
   setAmbientLight(color: Color, intensity: number): void {
     const existing = this.scene.children.filter((c) => c instanceof THREE.AmbientLight);
@@ -241,17 +420,272 @@ export class ThreeJSRenderer implements IRenderer {
     this.scene.fog = new THREE.FogExp2(new THREE.Color(color.r, color.g, color.b), 1 / far);
   }
 
-  screenShake(_intensity: number, _duration: number): void {}
+  screenShake(intensity: number, duration: number): void {
+    // Stack shakes: use the stronger of existing and new
+    if (intensity > this.shakeIntensity * (this.shakeRemaining / this.shakeDuration || 0)) {
+      this.shakeIntensity = intensity;
+      this.shakeDuration = duration;
+      this.shakeRemaining = duration;
+    }
+  }
 
-  drawHUD(_hudState: HUDState): void {}
+  muzzleFlash(): void {
+    if (this.muzzleFlashLight) {
+      this.muzzleFlashLight.intensity = 25;
+      this.muzzleFlashLight.color.setHex(0xffaa44);
+      this.muzzleFlashTimer = ThreeJSRenderer.MUZZLE_FLASH_DURATION;
+    }
+  }
 
-  // ── Resize ─────────────────────────────────────────────────
+  // ── Weapon Viewmodel ─────────────────────────────────────
+
+  drawWeaponViewmodel(state: WeaponViewmodelState): void {
+    if (!this.hudCtx || !this.hudCanvas) return;
+
+    const ctx = this.hudCtx;
+    const w = this.hudCanvas.width;
+    const h = this.hudCanvas.height;
+
+    // Clear the entire HUD canvas (weapon + HUD draw in same frame)
+    ctx.clearRect(0, 0, w, h);
+
+    // Weapon position: centered at bottom, offset down during lower/raise
+    const weaponW = Math.min(200, w * 0.2);
+    const weaponH = Math.min(250, h * 0.35);
+    const baseX = (w - weaponW) / 2;
+    const baseY = h - weaponH;
+
+    // Slide offset for weapon switching
+    const slideOffset = state.offset * weaponH * 1.2;
+
+    // Subtle bob when ready
+    let bobY = 0;
+    if (state.state === 'ready') {
+      bobY = Math.sin(performance.now() / 300) * 3;
+    }
+
+    // Recoil kick when firing
+    let recoilY = 0;
+    if (state.isFiring) {
+      recoilY = -15;
+    }
+
+    const finalX = baseX;
+    const finalY = baseY + slideOffset + bobY + recoilY;
+
+    const color = WEAPON_COLORS[state.weaponId] || '#cccccc';
+    const shape = WEAPON_SHAPES[state.weaponId] || 'pistol';
+
+    ctx.save();
+
+    // Draw weapon silhouette
+    this.drawWeaponShape(ctx, finalX, finalY, weaponW, weaponH, color, shape);
+
+    // Muzzle flash overlay
+    if (state.isFiring) {
+      this.drawMuzzleFlashSprite(ctx, finalX + weaponW / 2, finalY - 10);
+    }
+
+    ctx.restore();
+  }
+
+  private drawWeaponShape(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: string,
+    shape: string,
+  ): void {
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#00ccff';
+    ctx.lineWidth = 2;
+
+    switch (shape) {
+      case 'baton':
+        // Vertical bar (baton/club)
+        ctx.fillRect(x + w * 0.4, y + h * 0.1, w * 0.2, h * 0.85);
+        ctx.strokeRect(x + w * 0.4, y + h * 0.1, w * 0.2, h * 0.85);
+        // Handle grip
+        ctx.fillStyle = '#554433';
+        ctx.fillRect(x + w * 0.35, y + h * 0.7, w * 0.3, h * 0.25);
+        break;
+
+      case 'pistol':
+        // Barrel
+        ctx.fillRect(x + w * 0.3, y + h * 0.15, w * 0.4, h * 0.2);
+        ctx.strokeRect(x + w * 0.3, y + h * 0.15, w * 0.4, h * 0.2);
+        // Body
+        ctx.fillRect(x + w * 0.25, y + h * 0.35, w * 0.5, h * 0.25);
+        ctx.strokeRect(x + w * 0.25, y + h * 0.35, w * 0.5, h * 0.25);
+        // Grip
+        ctx.fillStyle = '#554433';
+        ctx.fillRect(x + w * 0.35, y + h * 0.6, w * 0.3, h * 0.35);
+        break;
+
+      case 'shotgun':
+        // Long barrel
+        ctx.fillRect(x + w * 0.2, y + h * 0.05, w * 0.15, h * 0.55);
+        ctx.strokeRect(x + w * 0.2, y + h * 0.05, w * 0.15, h * 0.55);
+        // Second barrel
+        ctx.fillRect(x + w * 0.38, y + h * 0.05, w * 0.15, h * 0.55);
+        ctx.strokeRect(x + w * 0.38, y + h * 0.05, w * 0.15, h * 0.55);
+        // Body/receiver
+        ctx.fillRect(x + w * 0.15, y + h * 0.55, w * 0.45, h * 0.15);
+        // Stock
+        ctx.fillStyle = '#554433';
+        ctx.fillRect(x + w * 0.25, y + h * 0.7, w * 0.25, h * 0.28);
+        break;
+
+      case 'rifle':
+        // Barrel
+        ctx.fillRect(x + w * 0.35, y + h * 0.05, w * 0.12, h * 0.45);
+        ctx.strokeRect(x + w * 0.35, y + h * 0.05, w * 0.12, h * 0.45);
+        // Body
+        ctx.fillRect(x + w * 0.2, y + h * 0.4, w * 0.5, h * 0.18);
+        ctx.strokeRect(x + w * 0.2, y + h * 0.4, w * 0.5, h * 0.18);
+        // Magazine
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(x + w * 0.38, y + h * 0.58, w * 0.12, h * 0.15);
+        // Grip
+        ctx.fillStyle = '#554433';
+        ctx.fillRect(x + w * 0.32, y + h * 0.65, w * 0.2, h * 0.3);
+        break;
+
+      case 'launcher':
+        // Wide tube
+        ctx.fillRect(x + w * 0.2, y + h * 0.1, w * 0.4, h * 0.5);
+        ctx.strokeRect(x + w * 0.2, y + h * 0.1, w * 0.4, h * 0.5);
+        // Opening
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(x + w * 0.25, y + h * 0.1, w * 0.3, h * 0.1);
+        // Grip
+        ctx.fillStyle = '#554433';
+        ctx.fillRect(x + w * 0.32, y + h * 0.6, w * 0.2, h * 0.35);
+        // Sight
+        ctx.fillStyle = '#ff4444';
+        ctx.fillRect(x + w * 0.38, y + h * 0.05, w * 0.06, h * 0.08);
+        break;
+    }
+  }
+
+  private drawMuzzleFlashSprite(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+  ): void {
+    const radius = 30 + Math.random() * 15;
+
+    // Outer glow
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    gradient.addColorStop(0, 'rgba(255, 200, 80, 0.9)');
+    gradient.addColorStop(0.3, 'rgba(255, 150, 30, 0.6)');
+    gradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.2)');
+    gradient.addColorStop(1, 'rgba(255, 80, 0, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright core
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── HUD ──────────────────────────────────────────────────
+
+  drawHUD(hudState: HUDState): void {
+    if (!this.hud || !this.hudCanvas) return;
+    this.hud.draw(hudState);
+  }
+
+  // ── Dynamic world updates ────────────────────────────────
+
+  updateSectorCeiling(sectorId: number, newHeight: number): void {
+    // Update ceiling mesh Y position
+    const ceilingMesh = this.sectorCeilingMeshes.get(sectorId);
+    if (ceilingMesh) {
+      ceilingMesh.position.y = newHeight;
+    }
+
+    // Rebuild upper/middle wall meshes for linedefs adjacent to this sector
+    const wallMeshes = this.sectorWallMeshes.get(sectorId);
+    if (wallMeshes && this.currentMapData) {
+      // Remove old wall meshes
+      for (const mesh of wallMeshes) {
+        this.mapGroup?.remove(mesh);
+        mesh.geometry.dispose();
+      }
+      wallMeshes.length = 0;
+
+      // Rebuild with current sector heights
+      for (const ld of this.currentMapData.linedefs) {
+        if (ld.frontSector !== sectorId && ld.backSector !== sectorId) continue;
+        if (ld.frontSector === null || ld.backSector === null) continue;
+
+        const frontSector = this.currentMapData.sectors.find((s: Sector) => s.id === ld.frontSector);
+        const backSector = this.currentMapData.sectors.find((s: Sector) => s.id === ld.backSector);
+        if (!frontSector || !backSector) continue;
+
+        const v1 = this.currentMapData.vertices[ld.v1];
+        const v2 = this.currentMapData.vertices[ld.v2];
+
+        // Upper wall: front ceiling higher than back ceiling
+        if (frontSector.ceilingHeight > backSector.ceilingHeight) {
+          const tex = ld.frontTexture?.upper ?? ld.frontTexture?.middle ?? 'wall_concrete';
+          const mesh = this.createWallQuadReturn(v1, v2, backSector.ceilingHeight, frontSector.ceilingHeight, tex);
+          if (mesh) {
+            this.mapGroup?.add(mesh);
+            wallMeshes.push(mesh);
+          }
+        }
+        if (backSector.ceilingHeight > frontSector.ceilingHeight) {
+          const tex = ld.backTexture?.upper ?? ld.backTexture?.middle ?? 'wall_concrete';
+          const mesh = this.createWallQuadReturn(v1, v2, frontSector.ceilingHeight, backSector.ceilingHeight, tex);
+          if (mesh) {
+            this.mapGroup?.add(mesh);
+            wallMeshes.push(mesh);
+          }
+        }
+
+        // Middle texture on non-door two-sided linedefs (e.g. grates, railings)
+        // Door linedefs don't get a middle texture — the door visual is the
+        // upper wall that shrinks as the ceiling rises (Doom-style).
+        if (ld.frontTexture?.middle && !ld.flags?.door) {
+          const bottom = Math.max(frontSector.floorHeight, backSector.floorHeight);
+          const top = Math.min(frontSector.ceilingHeight, backSector.ceilingHeight);
+          if (top > bottom) {
+            const mesh = this.createWallQuadReturn(v1, v2, bottom, top, ld.frontTexture.middle);
+            if (mesh) {
+              this.mapGroup?.add(mesh);
+              wallMeshes.push(mesh);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Resize ───────────────────────────────────────────────
 
   resize(width: number, height: number): void {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
+
+    // Resize HUD canvas
+    if (this.hudCanvas) {
+      this.hudCanvas.width = width;
+      this.hudCanvas.height = height;
+    }
+    if (this.hud) {
+      this.hud.resize(width, height);
+    }
   }
 
   // ══════════════════════════════════════════════════════════
@@ -275,13 +709,10 @@ export class ThreeJSRenderer implements IRenderer {
         : null;
 
     if (frontSector && !backSector) {
-      // Single-sided wall: full height
       const tex = linedef.frontTexture?.middle ?? 'wall_concrete';
       this.createWallQuad(v1, v2, frontSector.floorHeight, frontSector.ceilingHeight, tex);
     } else if (frontSector && backSector) {
-      // Two-sided linedef — potential upper, lower, and middle walls
-
-      // Lower wall (front floor lower than back floor)
+      // Lower wall
       if (frontSector.floorHeight < backSector.floorHeight) {
         const tex = linedef.frontTexture?.lower ?? linedef.frontTexture?.middle ?? null;
         if (tex) this.createWallQuad(v1, v2, frontSector.floorHeight, backSector.floorHeight, tex);
@@ -291,7 +722,7 @@ export class ThreeJSRenderer implements IRenderer {
         if (tex) this.createWallQuad(v1, v2, backSector.floorHeight, frontSector.floorHeight, tex);
       }
 
-      // Upper wall (front ceiling higher than back ceiling)
+      // Upper wall
       if (frontSector.ceilingHeight > backSector.ceilingHeight) {
         const tex = linedef.frontTexture?.upper ?? linedef.frontTexture?.middle ?? null;
         if (tex) this.createWallQuad(v1, v2, backSector.ceilingHeight, frontSector.ceilingHeight, tex);
@@ -301,7 +732,7 @@ export class ThreeJSRenderer implements IRenderer {
         if (tex) this.createWallQuad(v1, v2, frontSector.ceilingHeight, backSector.ceilingHeight, tex);
       }
 
-      // Middle texture on two-sided linedefs (e.g., doors, railings)
+      // Middle texture on two-sided linedefs
       if (linedef.frontTexture?.middle) {
         const bottom = Math.max(frontSector.floorHeight, backSector.floorHeight);
         const top = Math.min(frontSector.ceilingHeight, backSector.ceilingHeight);
@@ -310,7 +741,6 @@ export class ThreeJSRenderer implements IRenderer {
         }
       }
     } else if (!frontSector && backSector) {
-      // Back-only linedef: render from back sector's perspective
       const tex = linedef.backTexture?.middle ?? 'wall_concrete';
       this.createWallQuad(v1, v2, backSector.floorHeight, backSector.ceilingHeight, tex);
     }
@@ -333,7 +763,6 @@ export class ThreeJSRenderer implements IRenderer {
 
     const wallHeight = top - bottom;
 
-    // Vertex positions: bottom-left, bottom-right, top-right, top-left
     const positions = new Float32Array([
       v1[0], bottom, v1[1],
       v2[0], bottom, v2[1],
@@ -343,7 +772,6 @@ export class ThreeJSRenderer implements IRenderer {
 
     const indices = [0, 1, 2, 0, 2, 3];
 
-    // Normal — perpendicular to the wall on the right side of v1→v2
     const nx = dz / wallLength;
     const nz = -dx / wallLength;
     const normals = new Float32Array([
@@ -353,7 +781,6 @@ export class ThreeJSRenderer implements IRenderer {
       nx, 0, nz,
     ]);
 
-    // UVs — tile based on world dimensions
     const uRepeat = wallLength / 4;
     const vRepeat = wallHeight / 4;
     const uvs = new Float32Array([
@@ -374,6 +801,60 @@ export class ThreeJSRenderer implements IRenderer {
     this.mapGroup!.add(mesh);
   }
 
+  /** Create a wall quad and return the mesh (for door system dynamic updates). */
+  private createWallQuadReturn(
+    v1: [number, number],
+    v2: [number, number],
+    bottom: number,
+    top: number,
+    textureName: string,
+  ): THREE.Mesh | null {
+    if (top <= bottom) return null;
+
+    const dx = v2[0] - v1[0];
+    const dz = v2[1] - v1[1];
+    const wallLength = Math.sqrt(dx * dx + dz * dz);
+    if (wallLength < 0.001) return null;
+
+    const wallHeight = top - bottom;
+
+    const positions = new Float32Array([
+      v1[0], bottom, v1[1],
+      v2[0], bottom, v2[1],
+      v2[0], top, v2[1],
+      v1[0], top, v1[1],
+    ]);
+
+    const indices = [0, 1, 2, 0, 2, 3];
+
+    const nx = dz / wallLength;
+    const nz = -dx / wallLength;
+    const normals = new Float32Array([
+      nx, 0, nz,
+      nx, 0, nz,
+      nx, 0, nz,
+      nx, 0, nz,
+    ]);
+
+    const uRepeat = wallLength / 4;
+    const vRepeat = wallHeight / 4;
+    const uvs = new Float32Array([
+      0, 0,
+      uRepeat, 0,
+      uRepeat, vRepeat,
+      0, vRepeat,
+    ]);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+
+    const material = this.textureManager.getMaterial(textureName);
+    return new THREE.Mesh(geo, material);
+  }
+
   /** Build floor and ceiling meshes for a sector. */
   private buildSectorSurfaces(sectorId: number, mapData: MapData): void {
     const sector = mapData.sectors.find((s) => s.id === sectorId);
@@ -382,15 +863,106 @@ export class ThreeJSRenderer implements IRenderer {
     const polygon = this.buildSectorPolygon(sectorId, mapData);
     if (polygon.length < 3) return;
 
-    // Floor
     this.createHorizontalSurface(polygon, sector.floorHeight, sector.floorTexture, true);
-    // Ceiling
     this.createHorizontalSurface(polygon, sector.ceilingHeight, sector.ceilingTexture, false);
+  }
+
+  /**
+   * Build sector surfaces for a door sector, storing the ceiling mesh
+   * separately so it can be repositioned when the door opens/closes.
+   */
+  private buildDoorSectorSurfaces(sectorId: number, mapData: MapData): void {
+    const sector = mapData.sectors.find((s) => s.id === sectorId);
+    if (!sector) return;
+
+    const polygon = this.buildSectorPolygon(sectorId, mapData);
+    if (polygon.length < 3) return;
+
+    // Floor — static, added to mapGroup normally
+    this.createHorizontalSurface(polygon, sector.floorHeight, sector.floorTexture, true);
+
+    // Ceiling — tracked separately for dynamic Y updates
+    const ceilingMesh = this.createHorizontalSurfaceReturn(polygon, sector.ceilingHeight, sector.ceilingTexture, false);
+    if (ceilingMesh) {
+      this.mapGroup!.add(ceilingMesh);
+      this.sectorCeilingMeshes.set(sectorId, ceilingMesh);
+    }
+
+    // Initialize the wall mesh array for this sector (if not already populated by buildDoorAdjacentWalls)
+    if (!this.sectorWallMeshes.has(sectorId)) {
+      this.sectorWallMeshes.set(sectorId, []);
+    }
+  }
+
+  /**
+   * Build walls for a two-sided linedef adjacent to a door sector.
+   * Upper walls and middle (door face) textures are stored in sectorWallMeshes
+   * for dynamic rebuilding when the door ceiling changes.
+   */
+  private buildDoorAdjacentWalls(linedef: LineDef, mapData: MapData, doorSectorIds: Set<number>): void {
+    const v1 = mapData.vertices[linedef.v1];
+    const v2 = mapData.vertices[linedef.v2];
+
+    const frontSector = linedef.frontSector !== null
+      ? mapData.sectors.find((s) => s.id === linedef.frontSector) : null;
+    const backSector = linedef.backSector !== null
+      ? mapData.sectors.find((s) => s.id === linedef.backSector) : null;
+    if (!frontSector || !backSector) return;
+
+    // Determine which sector is the door sector (prefer backSector, matching DoorSystem)
+    const doorSectorId = doorSectorIds.has(backSector.id) ? backSector.id : frontSector.id;
+
+    // Ensure the wall mesh array exists
+    if (!this.sectorWallMeshes.has(doorSectorId)) {
+      this.sectorWallMeshes.set(doorSectorId, []);
+    }
+    const wallMeshes = this.sectorWallMeshes.get(doorSectorId)!;
+
+    // Lower walls (static — floor height doesn't change for doors)
+    if (frontSector.floorHeight < backSector.floorHeight) {
+      const tex = linedef.frontTexture?.lower ?? linedef.frontTexture?.middle ?? null;
+      if (tex) this.createWallQuad(v1, v2, frontSector.floorHeight, backSector.floorHeight, tex);
+    }
+    if (backSector.floorHeight < frontSector.floorHeight) {
+      const tex = linedef.backTexture?.lower ?? linedef.backTexture?.middle ?? null;
+      if (tex) this.createWallQuad(v1, v2, backSector.floorHeight, frontSector.floorHeight, tex);
+    }
+
+    // Upper walls (dynamic — tracked for rebuild when ceiling changes)
+    if (frontSector.ceilingHeight > backSector.ceilingHeight) {
+      const tex = linedef.frontTexture?.upper ?? linedef.frontTexture?.middle ?? 'wall_concrete';
+      const mesh = this.createWallQuadReturn(v1, v2, backSector.ceilingHeight, frontSector.ceilingHeight, tex);
+      if (mesh) {
+        this.mapGroup!.add(mesh);
+        wallMeshes.push(mesh);
+      }
+    }
+    if (backSector.ceilingHeight > frontSector.ceilingHeight) {
+      const tex = linedef.backTexture?.upper ?? linedef.backTexture?.middle ?? 'wall_concrete';
+      const mesh = this.createWallQuadReturn(v1, v2, frontSector.ceilingHeight, backSector.ceilingHeight, tex);
+      if (mesh) {
+        this.mapGroup!.add(mesh);
+        wallMeshes.push(mesh);
+      }
+    }
+
+    // Middle texture on non-door two-sided linedefs (grates, railings).
+    // Door linedefs skip this — the door visual is the upper wall.
+    if (linedef.frontTexture?.middle && !linedef.flags?.door) {
+      const bottom = Math.max(frontSector.floorHeight, backSector.floorHeight);
+      const top = Math.min(frontSector.ceilingHeight, backSector.ceilingHeight);
+      if (top > bottom) {
+        const mesh = this.createWallQuadReturn(v1, v2, bottom, top, linedef.frontTexture.middle);
+        if (mesh) {
+          this.mapGroup!.add(mesh);
+          wallMeshes.push(mesh);
+        }
+      }
+    }
   }
 
   /** Extract the polygon (array of [x, z] points) for a sector from its linedefs. */
   private buildSectorPolygon(sectorId: number, mapData: MapData): [number, number][] {
-    // Collect unique vertex indices for this sector
     const vertexIndices = new Set<number>();
     for (const ld of mapData.linedefs) {
       if (ld.frontSector === sectorId || ld.backSector === sectorId) {
@@ -403,7 +975,6 @@ export class ThreeJSRenderer implements IRenderer {
 
     const points = [...vertexIndices].map((idx) => mapData.vertices[idx]);
 
-    // Sort by angle from centroid to form a valid polygon
     const cx = points.reduce((s, p) => s + p[0], 0) / points.length;
     const cz = points.reduce((s, p) => s + p[1], 0) / points.length;
 
@@ -421,7 +992,6 @@ export class ThreeJSRenderer implements IRenderer {
     textureName: string,
     isFloor: boolean,
   ): void {
-    // Use THREE.Shape for triangulation (operates in XY, we map x→x, z→y)
     const shape = new THREE.Shape();
     shape.moveTo(polygon[0][0], polygon[0][1]);
     for (let i = 1; i < polygon.length; i++) {
@@ -431,22 +1001,14 @@ export class ThreeJSRenderer implements IRenderer {
 
     const geo = new THREE.ShapeGeometry(shape);
 
-    // ShapeGeometry lies in XY plane. Rotate so it lies in XZ plane.
-    // rotateX(-PI/2): (x, y, z) → (x, z, -y)
-    // Since our shape's y = map z, after rotation: 3D.z = -map.z (inverted).
-    // Fix: rotate X by +PI/2 for floor (face up), -PI/2 for ceiling (face down).
     if (isFloor) {
-      // Rotate so face points +Y (up)
       geo.rotateX(-Math.PI / 2);
-      // Fix Z inversion by scaling
       geo.scale(1, 1, -1);
     } else {
-      // Ceiling: face points -Y (down)
       geo.rotateX(Math.PI / 2);
       geo.scale(1, 1, -1);
     }
 
-    // Recompute UVs based on world XZ position (tiled every 4 units)
     const posAttr = geo.getAttribute('position');
     const uvAttr = geo.getAttribute('uv');
     for (let i = 0; i < posAttr.count; i++) {
@@ -462,9 +1024,49 @@ export class ThreeJSRenderer implements IRenderer {
     this.mapGroup!.add(mesh);
   }
 
+  /** Same as createHorizontalSurface but returns the mesh instead of adding to mapGroup. */
+  private createHorizontalSurfaceReturn(
+    polygon: [number, number][],
+    height: number,
+    textureName: string,
+    isFloor: boolean,
+  ): THREE.Mesh | null {
+    if (polygon.length < 3) return null;
+
+    const shape = new THREE.Shape();
+    shape.moveTo(polygon[0][0], polygon[0][1]);
+    for (let i = 1; i < polygon.length; i++) {
+      shape.lineTo(polygon[i][0], polygon[i][1]);
+    }
+    shape.closePath();
+
+    const geo = new THREE.ShapeGeometry(shape);
+
+    if (isFloor) {
+      geo.rotateX(-Math.PI / 2);
+      geo.scale(1, 1, -1);
+    } else {
+      geo.rotateX(Math.PI / 2);
+      geo.scale(1, 1, -1);
+    }
+
+    const posAttr = geo.getAttribute('position');
+    const uvAttr = geo.getAttribute('uv');
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+      uvAttr.setXY(i, x / 4, z / 4);
+    }
+    uvAttr.needsUpdate = true;
+
+    const material = this.textureManager.getMaterial(textureName);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.position.y = height;
+    return mesh;
+  }
+
   /** Determine floor height at a world position (for placing light things). */
   private getFloorHeightAt(x: number, z: number, mapData: MapData): number {
-    // Simple: find sector containing this point via centroid distance (good enough for light placement)
     let closestSector = mapData.sectors[0];
     let closestDist = Infinity;
 

@@ -1,5 +1,11 @@
 import type { CameraState, Vec3 } from '../renderer/RenderTypes.ts';
 import type { InputSystem } from '../systems/InputSystem.ts';
+import {
+  AmmoType,
+  WeaponId,
+  AMMO_START,
+  AMMO_MAX,
+} from '../combat/WeaponDefs.ts';
 
 const WALK_SPEED = 8;
 const RUN_SPEED = 14;
@@ -9,6 +15,7 @@ const EYE_HEIGHT = 1.6;
 export const PLAYER_HEIGHT = 1.8;
 export const PLAYER_RADIUS = 0.5;
 export const STEP_HEIGHT = 0.4;
+export const MAX_HEALTH = 100;
 
 export class Player {
   position: Vec3;
@@ -17,6 +24,35 @@ export class Player {
   floorHeight: number = 0;
   /** Actual sector floor height (non-lerped, used for physics). */
   sectorFloorHeight: number = 0;
+
+  // ── Inventory ────────────────────────────────────────────
+  health: number = MAX_HEALTH;
+  maxHealth: number = MAX_HEALTH;
+  armor: number = 0;
+
+  ammo: Record<AmmoType, number> = {
+    [AmmoType.NONE]: 0,
+    [AmmoType.BULLETS]: AMMO_START[AmmoType.BULLETS],
+    [AmmoType.SHELLS]: AMMO_START[AmmoType.SHELLS],
+    [AmmoType.ROCKETS]: AMMO_START[AmmoType.ROCKETS],
+  };
+
+  maxAmmo: Record<AmmoType, number> = {
+    [AmmoType.NONE]: 0,
+    [AmmoType.BULLETS]: AMMO_MAX[AmmoType.BULLETS],
+    [AmmoType.SHELLS]: AMMO_MAX[AmmoType.SHELLS],
+    [AmmoType.ROCKETS]: AMMO_MAX[AmmoType.ROCKETS],
+  };
+
+  /** Set of weapon IDs the player owns. */
+  weapons: Set<WeaponId> = new Set([WeaponId.BATON, WeaponId.PISTOL]);
+
+  /** Key cards collected. */
+  keys: { red: boolean; blue: boolean; yellow: boolean } = {
+    red: false,
+    blue: false,
+    yellow: false,
+  };
 
   constructor(x: number, z: number, yaw: number) {
     this.position = { x, y: 0, z };
