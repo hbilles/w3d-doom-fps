@@ -53,6 +53,93 @@ const WEAPON_SHAPES: Record<number, string> = {
   5: 'launcher',
 };
 
+interface ViewmodelTuning {
+  scale: number;
+  xOffsetPx: number;
+  yOffsetPx: number;
+  bobX: number;
+  bobY: number;
+  bobSpeed: number;
+  fireKickY: number;
+  fireJitterX: number;
+  recoverySettleY: number;
+}
+
+const VIEWMODEL_TUNING: Record<number, ViewmodelTuning> = {
+  // Baton: more sway and slightly right-biased hand position.
+  1: {
+    scale: 1.02,
+    xOffsetPx: 20,
+    yOffsetPx: -16,
+    bobX: 1.4,
+    bobY: 4.8,
+    bobSpeed: 8.0,
+    fireKickY: 10,
+    fireJitterX: 2.2,
+    recoverySettleY: 4.2,
+  },
+  // Pistol: centered, moderate recoil.
+  2: {
+    scale: 1.08,
+    xOffsetPx: 0,
+    yOffsetPx: -24,
+    bobX: 0.8,
+    bobY: 3.2,
+    bobSpeed: 7.2,
+    fireKickY: 18,
+    fireJitterX: 1.4,
+    recoverySettleY: 6.5,
+  },
+  // Shotgun: heavier stance and larger kick.
+  3: {
+    scale: 1.22,
+    xOffsetPx: 0,
+    yOffsetPx: -28,
+    bobX: 0.5,
+    bobY: 2.0,
+    bobSpeed: 5.8,
+    fireKickY: 28,
+    fireJitterX: 2.0,
+    recoverySettleY: 9.0,
+  },
+  // Auto-rifle: frequent fire with controlled kick.
+  4: {
+    scale: 1.16,
+    xOffsetPx: 10,
+    yOffsetPx: -24,
+    bobX: 0.9,
+    bobY: 2.8,
+    bobSpeed: 8.4,
+    fireKickY: 12,
+    fireJitterX: 2.4,
+    recoverySettleY: 5.0,
+  },
+  // Launcher: largest footprint and strongest recoil.
+  5: {
+    scale: 1.24,
+    xOffsetPx: 6,
+    yOffsetPx: -22,
+    bobX: 0.4,
+    bobY: 1.7,
+    bobSpeed: 5.0,
+    fireKickY: 34,
+    fireJitterX: 2.8,
+    recoverySettleY: 11.0,
+  },
+};
+
+const DEFAULT_VIEWMODEL_TUNING: ViewmodelTuning = {
+  scale: 1.0,
+  xOffsetPx: 0,
+  yOffsetPx: -20,
+  bobX: 0.8,
+  bobY: 2.8,
+  bobSpeed: 7.0,
+  fireKickY: 16,
+  fireJitterX: 1.5,
+  recoverySettleY: 6.0,
+};
+
 export class ThreeJSRenderer implements IRenderer {
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
@@ -539,44 +626,91 @@ export class ThreeJSRenderer implements IRenderer {
     // Clear the entire HUD canvas (weapon + HUD draw in same frame)
     ctx.clearRect(0, 0, w, h);
 
-    // Weapon position: centered at bottom, offset down during lower/raise
-    const weaponW = Math.min(200, w * 0.2);
-    const weaponH = Math.min(250, h * 0.35);
-    const baseX = (w - weaponW) / 2;
-    const baseY = h - weaponH;
+    const tuning = VIEWMODEL_TUNING[state.weaponId] ?? DEFAULT_VIEWMODEL_TUNING;
+
+    // Weapon position: centered at bottom with per-weapon scale/anchor tuning.
+    const baseWeaponW = Math.min(320, w * 0.34);
+    const baseWeaponH = Math.min(320, h * 0.5);
+    const weaponW = baseWeaponW * tuning.scale;
+    const weaponH = baseWeaponH * tuning.scale;
+    const baseX = (w - weaponW) / 2 + tuning.xOffsetPx;
+    const baseY = h - weaponH + tuning.yOffsetPx;
 
     // Slide offset for weapon switching
     const slideOffset = state.offset * weaponH * 1.2;
 
-    // Subtle bob when ready
+    const time = performance.now() / 1000;
+    let bobX = 0;
     let bobY = 0;
     if (state.state === 'ready') {
-      bobY = Math.sin(performance.now() / 300) * 3;
+      bobX =
+        Math.cos(time * tuning.bobSpeed * 0.5) * tuning.bobX;
+      bobY =
+        Math.sin(time * tuning.bobSpeed) * tuning.bobY +
+        Math.sin(time * tuning.bobSpeed * 0.65) * tuning.bobY * 0.35;
     }
 
-    // Recoil kick when firing
+    let recoilX = 0;
     let recoilY = 0;
     if (state.isFiring) {
-      recoilY = -15;
+      recoilX = (Math.random() - 0.5) * 2 * tuning.fireJitterX;
+      recoilY = -tuning.fireKickY;
+    } else if (state.state === 'recovery') {
+      recoilY = -tuning.recoverySettleY;
     }
 
-    const finalX = baseX;
+    const finalX = baseX + bobX + recoilX;
     const finalY = baseY + slideOffset + bobY + recoilY;
 
     const color = WEAPON_COLORS[state.weaponId] || '#cccccc';
     const shape = WEAPON_SHAPES[state.weaponId] || 'pistol';
+    const spriteKey = this.getViewmodelSpriteKey(state);
 
     ctx.save();
+    const drewAtlas = this.spriteAtlasManager.drawFrameToCanvas(
+      ctx,
+      spriteKey,
+      0,
+      finalX,
+      finalY,
+      weaponW,
+      weaponH,
+    );
 
-    // Draw weapon silhouette
-    this.drawWeaponShape(ctx, finalX, finalY, weaponW, weaponH, color, shape);
+    // Fallback path (procedural) if atlas is unavailable.
+    if (!drewAtlas) {
+      this.drawWeaponShape(ctx, finalX, finalY, weaponW, weaponH, color, shape);
+    }
 
     // Muzzle flash overlay
-    if (state.isFiring) {
+    if (state.isFiring && !drewAtlas) {
       this.drawMuzzleFlashSprite(ctx, finalX + weaponW / 2, finalY - 10);
     }
 
     ctx.restore();
+  }
+
+  private getViewmodelSpriteKey(state: WeaponViewmodelState): string {
+    const weaponNameById: Record<number, string> = {
+      1: 'baton',
+      2: 'pistol',
+      3: 'shotgun',
+      4: 'auto_rifle',
+      5: 'launcher',
+    };
+
+    const weaponName = weaponNameById[state.weaponId] ?? 'pistol';
+
+    let phase = state.state;
+    if (state.isFiring) {
+      phase = 'fire';
+    } else if (phase === 'lower' || phase === 'raise') {
+      phase = 'ready';
+    } else if (phase !== 'ready' && phase !== 'recovery') {
+      phase = 'ready';
+    }
+
+    return `viewmodel_${weaponName}_${phase}`;
   }
 
   private drawWeaponShape(

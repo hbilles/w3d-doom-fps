@@ -22,6 +22,7 @@ interface AtlasMeta {
 
 interface AtlasStore {
   texture: THREE.Texture;
+  image: CanvasImageSource;
   width: number;
   height: number;
   frames: Record<string, AtlasFrame>;
@@ -50,7 +51,26 @@ export class SpriteAtlasManager {
   private spriteDefs: Map<string, SpriteDef> = new Map();
 
   async loadDefaultAtlases(): Promise<void> {
-    await this.loadAtlas('/assets/sprites/items_atlas.json');
+    const paths = [
+      '/assets/sprites/items_atlas.json',
+      '/assets/sprites/viewmodels_atlas.json',
+    ];
+
+    let loaded = 0;
+    let firstError: unknown = null;
+
+    for (const path of paths) {
+      try {
+        await this.loadAtlas(path);
+        loaded++;
+      } catch (err) {
+        if (firstError === null) firstError = err;
+      }
+    }
+
+    if (loaded === 0 && firstError) {
+      throw firstError;
+    }
   }
 
   async loadAtlas(metaPath: string): Promise<void> {
@@ -70,11 +90,16 @@ export class SpriteAtlasManager {
     texture.needsUpdate = true;
 
     const image = texture.image as { width?: number; height?: number };
+    const imageSource = texture.image as CanvasImageSource | null;
     const width = image.width ?? 1;
     const height = image.height ?? 1;
+    if (!imageSource) {
+      throw new Error(`Invalid atlas image for "${meta.id}"`);
+    }
 
     this.atlases.set(meta.id, {
       texture,
+      image: imageSource,
       width,
       height,
       frames: meta.frames,
@@ -160,6 +185,43 @@ export class SpriteAtlasManager {
       1 - (frame.y + frame.h) / atlas.height,
     );
     texture.needsUpdate = true;
+  }
+
+  drawFrameToCanvas(
+    ctx: CanvasRenderingContext2D,
+    spriteKey: string,
+    frameIndex: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): boolean {
+    const spriteDef = this.spriteDefs.get(spriteKey);
+    if (!spriteDef) return false;
+
+    const atlas = this.atlases.get(spriteDef.atlasId);
+    if (!atlas) return false;
+
+    const count = spriteDef.frameNames.length;
+    if (count === 0) return false;
+
+    const normalizedIndex = ((frameIndex % count) + count) % count;
+    const frameName = spriteDef.frameNames[normalizedIndex];
+    const frame = atlas.frames[frameName];
+    if (!frame) return false;
+
+    ctx.drawImage(
+      atlas.image,
+      frame.x,
+      frame.y,
+      frame.w,
+      frame.h,
+      x,
+      y,
+      width,
+      height,
+    );
+    return true;
   }
 
   dispose(): void {
