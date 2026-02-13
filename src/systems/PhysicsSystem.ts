@@ -7,6 +7,12 @@ export interface MovementResult {
   floorHeight: number;
 }
 
+export interface CircleObstacle {
+  x: number;
+  z: number;
+  radius: number;
+}
+
 /**
  * Handles player collision detection against linedefs with wall sliding,
  * step-up logic, and sector height tracking.
@@ -36,6 +42,7 @@ export class PhysicsSystem {
     desiredX: number,
     desiredZ: number,
     currentFloorHeight: number,
+    circleObstacles: CircleObstacle[] = [],
   ): MovementResult {
     if (!this.mapData) {
       return { x: desiredX, z: desiredZ, floorHeight: currentFloorHeight };
@@ -55,6 +62,23 @@ export class PhysicsSystem {
         const v2 = this.mapData.vertices[ld.v2];
 
         const result = circleVsSegment(newX, newZ, PLAYER_RADIUS, v1, v2);
+        if (result.overlaps) {
+          newX += result.pushX;
+          newZ += result.pushZ;
+          pushed = true;
+        }
+      }
+
+      // Dynamic circle obstacles (e.g. barrels) block movement too.
+      for (const obstacle of circleObstacles) {
+        const combinedRadius = PLAYER_RADIUS + obstacle.radius;
+        const result = circleVsCircle(
+          newX,
+          newZ,
+          combinedRadius,
+          obstacle.x,
+          obstacle.z,
+        );
         if (result.overlaps) {
           newX += result.pushX;
           newZ += result.pushZ;
@@ -171,6 +195,39 @@ export class PhysicsSystem {
 
     return points;
   }
+}
+
+/** Test player circle center against a fixed obstacle circle center. */
+function circleVsCircle(
+  cx: number,
+  cz: number,
+  combinedRadius: number,
+  ox: number,
+  oz: number,
+): { overlaps: boolean; pushX: number; pushZ: number } {
+  const dx = cx - ox;
+  const dz = cz - oz;
+  const distSq = dx * dx + dz * dz;
+
+  if (distSq >= combinedRadius * combinedRadius) {
+    return { overlaps: false, pushX: 0, pushZ: 0 };
+  }
+
+  // Degenerate case: centers overlap exactly.
+  if (distSq < 0.0001) {
+    return { overlaps: true, pushX: combinedRadius, pushZ: 0 };
+  }
+
+  const dist = Math.sqrt(distSq);
+  const overlap = combinedRadius - dist;
+  const nx = dx / dist;
+  const nz = dz / dist;
+
+  return {
+    overlaps: true,
+    pushX: nx * overlap,
+    pushZ: nz * overlap,
+  };
 }
 
 // ── Geometry utilities ─────────────────────────────────────────

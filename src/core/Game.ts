@@ -226,6 +226,14 @@ export class Game {
     // Player computes movement from input
     this.player.update(dt, this.inputSystem);
 
+    const barrelObstacles = this.barrels
+      .filter((barrel) => barrel.alive)
+      .map((barrel) => ({
+        x: barrel.position.x,
+        z: barrel.position.z,
+        radius: barrel.radius,
+      }));
+
     // Physics resolves collision and determines floor height
     const result = this.physicsSystem.resolveMovement(
       oldX,
@@ -233,6 +241,7 @@ export class Game {
       this.player.position.x,
       this.player.position.z,
       this.player.sectorFloorHeight,
+      barrelObstacles,
     );
 
     this.player.position.x = result.x;
