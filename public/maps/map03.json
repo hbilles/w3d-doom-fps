@@ -5,6 +5,20 @@
   "ambientLight": { "r": 0.03, "g": 0.03, "b": 0.08 },
   "fogColor": { "r": 0.02, "g": 0.01, "b": 0.04 },
   "fogDensity": 0.02,
+  "atmosphere": {
+    "rain": true,
+    "rainDensity": 0.62,
+    "rainSpeed": 12.5,
+    "rainRipples": true,
+    "rainRippleDensity": 0.55,
+    "steam": true,
+    "steamDensity": 0.45,
+    "steamVents": [[6, 9.8], [5, 15.5]],
+    "vignette": 0.32,
+    "grain": 0.032,
+    "chromaticAberration": 0.0017,
+    "bloomStrength": 0.85
+  },
 
   "vertices": [
     [4, 0],

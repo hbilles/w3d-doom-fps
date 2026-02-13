@@ -9,10 +9,26 @@ export interface MapData {
   ambientLight: Color;
   fogColor: Color;
   fogDensity: number;
+  atmosphere?: AtmosphereSettings;
   vertices: [number, number][];
   linedefs: LineDef[];
   sectors: Sector[];
   things: Thing[];
+}
+
+export interface AtmosphereSettings {
+  rain?: boolean;
+  rainDensity?: number; // 0..1
+  rainSpeed?: number; // units/sec
+  rainRipples?: boolean;
+  rainRippleDensity?: number; // 0..1
+  steam?: boolean;
+  steamDensity?: number; // 0..1
+  steamVents?: [number, number][]; // x,z
+  vignette?: number; // 0..1
+  grain?: number; // 0..1
+  chromaticAberration?: number; // uv offset amount
+  bloomStrength?: number; // UnrealBloomPass strength
 }
 
 // ── Line Definitions ────────────────────────────────────────

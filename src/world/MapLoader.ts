@@ -33,6 +33,19 @@ export class MapLoader {
     map.name ??= 'Unnamed Map';
     map.author ??= 'Unknown';
     map.music ??= '';
+    map.atmosphere ??= {};
+    map.atmosphere.rain ??= false;
+    map.atmosphere.rainDensity ??= 0.45;
+    map.atmosphere.rainSpeed ??= 11;
+    map.atmosphere.rainRipples ??= true;
+    map.atmosphere.rainRippleDensity ??= 0.5;
+    map.atmosphere.steam ??= true;
+    map.atmosphere.steamDensity ??= 0.4;
+    map.atmosphere.steamVents ??= [];
+    map.atmosphere.vignette ??= 0.26;
+    map.atmosphere.grain ??= 0.035;
+    map.atmosphere.chromaticAberration ??= 0.0016;
+    map.atmosphere.bloomStrength ??= 0.75;
 
     // Ensure linedef flags have defaults
     for (const ld of map.linedefs) {

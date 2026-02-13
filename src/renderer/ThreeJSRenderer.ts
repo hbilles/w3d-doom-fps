@@ -3,9 +3,11 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { TextureManager } from './TextureManager.ts';
 import { SpriteAtlasManager } from './SpriteAtlasManager.ts';
 import { TransientFxSystem } from './TransientFxSystem.ts';
+import { AtmosphereSystem } from './AtmosphereSystem.ts';
 import type { IRenderer } from './IRenderer.ts';
 import type {
   CameraState,
@@ -141,16 +143,72 @@ const DEFAULT_VIEWMODEL_TUNING: ViewmodelTuning = {
   recoverySettleY: 6.0,
 };
 
+const NEON_MOOD_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    vignette: { value: 0.26 },
+    grain: { value: 0.035 },
+    chroma: { value: 0.0016 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float vignette;
+    uniform float grain;
+    uniform float chroma;
+    varying vec2 vUv;
+
+    float rand(vec2 co) {
+      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vec2 centered = vUv - 0.5;
+      float dist = length(centered);
+      vec2 dir = dist > 0.0001 ? normalize(centered) : vec2(0.0);
+
+      vec2 rUv = vUv + dir * chroma * dist;
+      vec2 bUv = vUv - dir * chroma * dist;
+
+      float r = texture2D(tDiffuse, rUv).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, bUv).b;
+      vec3 color = vec3(r, g, b);
+
+      float vig = smoothstep(0.2, 1.0, dist);
+      color *= 1.0 - vig * vignette;
+
+      float n = rand(vUv * vec2(1280.0, 720.0) + time * 41.37) - 0.5;
+      color += n * grain;
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+};
+
 export class ThreeJSRenderer implements IRenderer {
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
   private composer!: EffectComposer;
+  private bloomPass!: UnrealBloomPass;
+  private moodPass!: ShaderPass;
+  private moodTime: number = 0;
+  private frameDt: number = 0;
   private pointLights: Map<string, THREE.PointLight> = new Map();
   private mapGroup: THREE.Group | null = null;
   private textureManager: TextureManager = new TextureManager();
   private spriteAtlasManager: SpriteAtlasManager = new SpriteAtlasManager();
   private transientFxSystem: TransientFxSystem | null = null;
+  private atmosphereSystem: AtmosphereSystem | null = null;
   private flickerLights: FlickerLight[] = [];
   private playerLight!: THREE.PointLight;
 
@@ -194,6 +252,7 @@ export class ThreeJSRenderer implements IRenderer {
     // ── Scene & Camera ───────────────────────────────────────
     this.scene = new THREE.Scene();
     this.transientFxSystem = new TransientFxSystem(this.scene);
+    this.atmosphereSystem = new AtmosphereSystem(this.scene);
 
     this.camera = new THREE.PerspectiveCamera(
       90,
@@ -207,13 +266,16 @@ export class ThreeJSRenderer implements IRenderer {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    const bloomPass = new UnrealBloomPass(
+    this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       0.7,  // strength
       0.5,  // radius
       0.3,  // threshold — lower so neon surfaces glow more
     );
-    this.composer.addPass(bloomPass);
+    this.composer.addPass(this.bloomPass);
+
+    this.moodPass = new ShaderPass(NEON_MOOD_SHADER);
+    this.composer.addPass(this.moodPass);
     this.composer.addPass(new OutputPass());
 
     // Player headlamp
@@ -261,6 +323,8 @@ export class ThreeJSRenderer implements IRenderer {
   dispose(): void {
     this.transientFxSystem?.dispose();
     this.transientFxSystem = null;
+    this.atmosphereSystem?.dispose();
+    this.atmosphereSystem = null;
 
     // Remove/destroy live dynamic sprites first.
     for (const id of [...this.sprites.keys()]) {
@@ -281,6 +345,9 @@ export class ThreeJSRenderer implements IRenderer {
   // ── Per-frame ──────────────────────────────────────────────
 
   beginFrame(dt: number): void {
+    this.frameDt = dt;
+    this.moodTime += dt;
+
     // Animate flickering lights
     const time = performance.now() / 1000;
     for (const fl of this.flickerLights) {
@@ -312,6 +379,9 @@ export class ThreeJSRenderer implements IRenderer {
     }
 
     this.transientFxSystem?.update(dt);
+    if (this.moodPass) {
+      this.moodPass.uniforms.time.value = this.moodTime;
+    }
   }
 
   render(
@@ -336,6 +406,12 @@ export class ThreeJSRenderer implements IRenderer {
     if (this.muzzleFlashLight && this.muzzleFlashTimer > 0) {
       this.muzzleFlashLight.position.copy(this.camera.position);
     }
+
+    this.atmosphereSystem?.update(this.frameDt, {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      z: this.camera.position.z,
+    });
 
     this.composer.render();
   }
@@ -391,6 +467,7 @@ export class ThreeJSRenderer implements IRenderer {
 
     // Place lights from things
     let lightIdx = 0;
+    const steamVents: Vec3[] = [];
     for (const thing of mapData.things) {
       if (thing.type === ThingType.LIGHT_NEON || thing.type === ThingType.LIGHT_FLICKER) {
         const color = NEON_COLORS[lightIdx % NEON_COLORS.length];
@@ -410,6 +487,15 @@ export class ThreeJSRenderer implements IRenderer {
         marker.position.set(thing.position[0], lightY, thing.position[1]);
         this.mapGroup.add(marker);
 
+        // Emissive neon panel accent near the light source to strengthen signage look.
+        this.createNeonPanel(
+          thing.position[0],
+          lightY - 0.15,
+          thing.position[1],
+          color,
+          lightIdx,
+        );
+
         // Point light
         const light = new THREE.PointLight(color, baseIntensity, 20);
         light.position.set(thing.position[0], lightY, thing.position[1]);
@@ -427,6 +513,15 @@ export class ThreeJSRenderer implements IRenderer {
       }
     }
 
+    for (const vent of mapData.atmosphere?.steamVents ?? []) {
+      const floorH = this.getFloorHeightAt(vent[0], vent[1], mapData);
+      steamVents.push({
+        x: vent[0],
+        y: floorH + 0.08,
+        z: vent[1],
+      });
+    }
+
     // Hemisphere light
     const hemiLight = new THREE.HemisphereLight(0x8888aa, 0x333355, 0.8);
     this.mapGroup.add(hemiLight);
@@ -441,11 +536,24 @@ export class ThreeJSRenderer implements IRenderer {
       fogDensity,
     );
 
+    this.applyAtmospherePostSettings(mapData);
+    this.atmosphereSystem?.configure({
+      rainEnabled: mapData.atmosphere?.rain ?? false,
+      rainDensity: mapData.atmosphere?.rainDensity ?? 0.45,
+      rainSpeed: mapData.atmosphere?.rainSpeed ?? 11,
+      rainRipplesEnabled: mapData.atmosphere?.rainRipples ?? true,
+      rainRippleDensity: mapData.atmosphere?.rainRippleDensity ?? 0.5,
+      steamEnabled: mapData.atmosphere?.steam ?? true,
+      steamDensity: mapData.atmosphere?.steamDensity ?? 0.4,
+      steamVents,
+    });
+
     this.scene.add(this.mapGroup);
   }
 
   unloadMap(): void {
     this.transientFxSystem?.clear();
+    this.atmosphereSystem?.clear();
 
     for (const id of [...this.sprites.keys()]) {
       this.removeSprite(id);
@@ -456,6 +564,13 @@ export class ThreeJSRenderer implements IRenderer {
       this.mapGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            for (const mat of obj.material) {
+              mat.dispose();
+            }
+          } else {
+            obj.material.dispose();
+          }
         }
         if (obj instanceof THREE.Light) {
           obj.dispose();
@@ -605,6 +720,19 @@ export class ThreeJSRenderer implements IRenderer {
 
   setFog(color: Color, _near: number, far: number): void {
     this.scene.fog = new THREE.FogExp2(new THREE.Color(color.r, color.g, color.b), 1 / far);
+  }
+
+  private applyAtmospherePostSettings(mapData: MapData): void {
+    const atmosphere = mapData.atmosphere ?? {};
+
+    if (this.bloomPass) {
+      this.bloomPass.strength = THREE.MathUtils.clamp(atmosphere.bloomStrength ?? 0.75, 0.2, 1.6);
+    }
+    if (this.moodPass) {
+      this.moodPass.uniforms.vignette.value = THREE.MathUtils.clamp(atmosphere.vignette ?? 0.26, 0, 0.8);
+      this.moodPass.uniforms.grain.value = THREE.MathUtils.clamp(atmosphere.grain ?? 0.035, 0, 0.25);
+      this.moodPass.uniforms.chroma.value = THREE.MathUtils.clamp(atmosphere.chromaticAberration ?? 0.0016, 0, 0.006);
+    }
   }
 
   screenShake(intensity: number, duration: number): void {
@@ -1313,6 +1441,41 @@ export class ThreeJSRenderer implements IRenderer {
     const mesh = new THREE.Mesh(geo, material);
     mesh.position.y = height;
     return mesh;
+  }
+
+  private createNeonPanel(x: number, y: number, z: number, color: number, idx: number): void {
+    if (!this.mapGroup) return;
+
+    const width = 1.05 + (idx % 3) * 0.15;
+    const height = 0.24 + (idx % 2) * 0.05;
+
+    const panelGeo = new THREE.PlaneGeometry(width, height);
+    const panelMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.45,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    panel.position.set(x, y, z);
+    panel.rotation.y = ((idx * 0.9) % Math.PI) - Math.PI * 0.5;
+    this.mapGroup.add(panel);
+
+    const coreGeo = new THREE.PlaneGeometry(width * 0.65, height * 0.28);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.82,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.set(x, y, z + 0.01);
+    core.rotation.y = panel.rotation.y;
+    this.mapGroup.add(core);
   }
 
   /** Determine floor height at a world position (for placing light things). */
