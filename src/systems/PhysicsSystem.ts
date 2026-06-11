@@ -13,8 +13,10 @@ export interface CircleObstacle {
   radius: number;
 }
 
+const MONSTER_HEIGHT = 1.6; // Approximate height for monster ceiling checks
+
 /**
- * Handles player collision detection against linedefs with wall sliding,
+ * Handles collision detection against linedefs with wall sliding,
  * step-up logic, and sector height tracking.
  */
 export class PhysicsSystem {
@@ -96,6 +98,60 @@ export class PhysicsSystem {
     return { x: newX, z: newZ, floorHeight };
   }
 
+  /**
+   * Resolve an entity's (enemy) desired movement against world geometry.
+   * Uses monster-specific blocking rules (blockMonsters flag, monster height).
+   */
+  resolveEntityMovement(
+    desiredX: number,
+    desiredZ: number,
+    entityRadius: number,
+    currentFloorHeight: number,
+    circleObstacles: CircleObstacle[] = [],
+  ): MovementResult {
+    if (!this.mapData) {
+      return { x: desiredX, z: desiredZ, floorHeight: currentFloorHeight };
+    }
+
+    let newX = desiredX;
+    let newZ = desiredZ;
+
+    for (let iteration = 0; iteration < 3; iteration++) {
+      let pushed = false;
+
+      for (const ld of this.mapData.linedefs) {
+        if (!this.isBlockingForMonster(ld, currentFloorHeight)) continue;
+
+        const v1 = this.mapData.vertices[ld.v1];
+        const v2 = this.mapData.vertices[ld.v2];
+
+        const result = circleVsSegment(newX, newZ, entityRadius, v1, v2);
+        if (result.overlaps) {
+          newX += result.pushX;
+          newZ += result.pushZ;
+          pushed = true;
+        }
+      }
+
+      for (const obstacle of circleObstacles) {
+        const combinedRadius = entityRadius + obstacle.radius;
+        const result = circleVsCircle(newX, newZ, combinedRadius, obstacle.x, obstacle.z);
+        if (result.overlaps) {
+          newX += result.pushX;
+          newZ += result.pushZ;
+          pushed = true;
+        }
+      }
+
+      if (!pushed) break;
+    }
+
+    const sector = this.findSectorAt(newX, newZ);
+    const floorHeight = sector ? sector.floorHeight : currentFloorHeight;
+
+    return { x: newX, z: newZ, floorHeight };
+  }
+
   /** Find which sector contains the given world position. */
   findSectorAt(x: number, z: number): Sector | null {
     if (!this.mapData) return null;
@@ -160,6 +216,26 @@ export class PhysicsSystem {
     if (minCeiling - maxFloor < PLAYER_HEIGHT) {
       return true;
     }
+
+    return false;
+  }
+
+  /** Determine if a linedef should block monster/enemy movement. */
+  private isBlockingForMonster(ld: LineDef, currentFloorHeight: number): boolean {
+    if (ld.frontSector === null || ld.backSector === null) return true;
+    if (ld.flags?.impassable) return true;
+    if (ld.flags?.blockMonsters) return true;
+    if (!this.mapData) return true;
+
+    const frontSector = this.mapData.sectors.find((s) => s.id === ld.frontSector);
+    const backSector = this.mapData.sectors.find((s) => s.id === ld.backSector);
+    if (!frontSector || !backSector) return true;
+
+    const maxFloor = Math.max(frontSector.floorHeight, backSector.floorHeight);
+    if (maxFloor - currentFloorHeight > STEP_HEIGHT + 0.01) return true;
+
+    const minCeiling = Math.min(frontSector.ceilingHeight, backSector.ceilingHeight);
+    if (minCeiling - maxFloor < MONSTER_HEIGHT) return true;
 
     return false;
   }

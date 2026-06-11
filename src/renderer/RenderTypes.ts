@@ -53,6 +53,12 @@ export interface SpriteConfig {
   frameHeight: number;
   animations: Record<string, number[]>;
   worldScale?: number;
+  /**
+   * Brightness multiplier (0-1). Sprites are unlit; values below 1 keep
+   * non-emissive sprites (enemies) seated in the dark scene instead of
+   * rendering full-bright. Glowing pickups should stay at 1.
+   */
+  brightness?: number;
 }
 
 // ── Weapon Viewmodel ────────────────────────────────────────

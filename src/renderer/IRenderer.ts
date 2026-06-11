@@ -31,6 +31,8 @@ export interface IRenderer {
   // Dynamic entities
   addSprite(id: string, config: SpriteConfig): void;
   updateSprite(id: string, position: Vec3, frame: number): void;
+  /** Switch a sprite to a different frame/animation key within the same atlas. */
+  setSpriteAnimation(id: string, spriteKey: string): void;
   removeSprite(id: string): void;
 
   // Effects

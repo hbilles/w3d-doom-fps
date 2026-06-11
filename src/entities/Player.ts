@@ -29,6 +29,7 @@ export class Player {
   health: number = MAX_HEALTH;
   maxHealth: number = MAX_HEALTH;
   armor: number = 0;
+  armorType: 'green' | 'blue' | 'none' = 'none';
 
   ammo: Record<AmmoType, number> = {
     [AmmoType.NONE]: 0,

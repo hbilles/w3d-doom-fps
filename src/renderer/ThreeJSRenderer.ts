@@ -270,7 +270,7 @@ export class ThreeJSRenderer implements IRenderer {
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       0.7,  // strength
       0.5,  // radius
-      0.3,  // threshold — lower so neon surfaces glow more
+      0.55, // threshold — only true emissives (neon, flashes) should bloom
     );
     this.composer.addPass(this.bloomPass);
 
@@ -617,6 +617,11 @@ export class ThreeJSRenderer implements IRenderer {
       texture = fallbackTexture;
     }
 
+    const brightness = config.brightness ?? 1;
+    if (brightness < 1) {
+      sprite.material.color.setScalar(brightness);
+    }
+
     const aspect = frameHeight / Math.max(1, frameWidth);
     const baseScale = config.worldScale ?? 1;
     sprite.scale.set(baseScale, baseScale * aspect, 1);
@@ -637,6 +642,16 @@ export class ThreeJSRenderer implements IRenderer {
         this.spriteAtlasManager.applyFrame(entry.texture, entry.spriteKey, frame);
       }
     }
+  }
+
+  setSpriteAnimation(id: string, spriteKey: string): void {
+    const entry = this.sprites.get(id);
+    if (!entry || entry.spriteKey === spriteKey) return;
+    if (!this.spriteAtlasManager.hasSprite(spriteKey)) return;
+
+    entry.spriteKey = spriteKey;
+    entry.frameCount = this.spriteAtlasManager.getFrameCount(spriteKey);
+    this.spriteAtlasManager.applyFrame(entry.texture, spriteKey, 0);
   }
 
   removeSprite(id: string): void {

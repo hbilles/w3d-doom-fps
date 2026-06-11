@@ -9,6 +9,9 @@ const overlayText = overlay.querySelector('p') as HTMLParagraphElement;
 const renderer = new ThreeJSRenderer();
 const game = new Game(renderer);
 
+// Debug handle for automated testing (browser agents, console inspection)
+(window as unknown as { __game: Game }).__game = game;
+
 // Read map from URL param, default to map01
 const mapName =
   new URLSearchParams(window.location.search).get('map') ?? 'map01';

@@ -54,6 +54,7 @@ export class SpriteAtlasManager {
     const paths = [
       '/assets/sprites/items_atlas.json',
       '/assets/sprites/viewmodels_atlas.json',
+      '/assets/sprites/enemies_atlas.json',
     ];
 
     let loaded = 0;
@@ -128,6 +129,10 @@ export class SpriteAtlasManager {
 
   hasSprite(spriteKey: string): boolean {
     return this.spriteDefs.has(spriteKey);
+  }
+
+  getFrameCount(spriteKey: string): number {
+    return this.spriteDefs.get(spriteKey)?.frameNames.length ?? 0;
   }
 
   createSpriteMaterial(spriteKey: string): SpriteMaterialInfo | null {

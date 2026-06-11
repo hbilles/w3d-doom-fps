@@ -19,6 +19,15 @@ export interface EntityHitInfo {
   damage: number;
 }
 
+// ── Hittable entity interface ────────────────────────────
+
+export interface HittableEntity {
+  id: string;
+  position: { x: number; z: number };
+  radius: number;
+  alive: boolean;
+}
+
 // ── Splash damage request ──────────────────────────────────
 
 export interface SplashRequest {
@@ -38,11 +47,22 @@ export class CombatSystem {
   private mapData: MapData | null = null;
   private wallSegments: Array<{ v1: [number, number]; v2: [number, number] }> = [];
   private eventBus: EventBus | null = null;
+  private enemies: HittableEntity[] = [];
+  private barrels: HittableEntity[] = [];
 
   init(mapData: MapData, eventBus: EventBus): void {
     this.mapData = mapData;
     this.eventBus = eventBus;
     this.buildWallSegments();
+  }
+
+  /**
+   * Register entity lists for hitscan testing. Call once per frame
+   * before any weapon firing occurs.
+   */
+  setEntities(enemies: HittableEntity[], barrels: HittableEntity[]): void {
+    this.enemies = enemies;
+    this.barrels = barrels;
   }
 
   /**
@@ -54,7 +74,7 @@ export class CombatSystem {
     dirX: number,
     dirZ: number,
     maxRange: number,
-    _damage: number,
+    damage: number,
   ): HitscanResult {
     // Test against walls
     let closestWall: RayHit | null = null;
@@ -65,12 +85,47 @@ export class CombatSystem {
       }
     }
 
+    const maxDist = closestWall ? closestWall.distance : maxRange;
     const entityHits: EntityHitInfo[] = [];
 
-    // TODO: Phase 3 — test against enemy entities and barrels here
-    // For each entity, check ray-vs-circle and compare distance to closestWall
+    // Test against enemies
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      const hitDist = this.rayVsCircle(
+        ox, oz, dirX, dirZ, enemy.position.x, enemy.position.z, enemy.radius, maxDist,
+      );
+      if (hitDist !== null) {
+        entityHits.push({
+          entityId: enemy.id,
+          entityType: 'enemy',
+          distance: hitDist,
+          damage,
+        });
+      }
+    }
 
-    if (closestWall) {
+    // Test against barrels
+    for (const barrel of this.barrels) {
+      if (!barrel.alive) continue;
+      const hitDist = this.rayVsCircle(
+        ox, oz, dirX, dirZ, barrel.position.x, barrel.position.z, barrel.radius, maxDist,
+      );
+      if (hitDist !== null) {
+        entityHits.push({
+          entityId: barrel.id,
+          entityType: 'barrel',
+          distance: hitDist,
+          damage,
+        });
+      }
+    }
+
+    // Sort by distance (closest first) so caller can process in order
+    entityHits.sort((a, b) => a.distance - b.distance);
+
+    // Only emit wall hit if no entity was hit closer
+    const closestEntityDist = entityHits.length > 0 ? entityHits[0].distance : Infinity;
+    if (closestWall && closestWall.distance < closestEntityDist) {
       this.eventBus?.emit('combat.wallHit', {
         x: closestWall.x,
         z: closestWall.z,
@@ -165,7 +220,58 @@ export class CombatSystem {
     return closest;
   }
 
+  /** Get the cached wall segments for LOS checks by other systems. */
+  getWallSegments(): Array<{ v1: [number, number]; v2: [number, number] }> {
+    return this.wallSegments;
+  }
+
   // ── Private ──────────────────────────────────────────────
+
+  /**
+   * Test a 2D ray against a circle. Returns the distance to the closest
+   * intersection point, or null if no hit within maxDist.
+   */
+  private rayVsCircle(
+    ox: number, oz: number,
+    dx: number, dz: number,
+    cx: number, cz: number,
+    radius: number,
+    maxDist: number,
+  ): number | null {
+    // Normalize direction
+    const dirLen = Math.sqrt(dx * dx + dz * dz);
+    if (dirLen < 0.0001) return null;
+    const ndx = dx / dirLen;
+    const ndz = dz / dirLen;
+
+    // Vector from ray origin to circle center
+    const ocx = cx - ox;
+    const ocz = cz - oz;
+
+    // Project onto ray direction
+    const tca = ocx * ndx + ocz * ndz;
+
+    // Circle is behind ray
+    if (tca < -radius) return null;
+
+    // Perpendicular distance squared from circle center to ray
+    const d2 = (ocx * ocx + ocz * ocz) - tca * tca;
+    const r2 = radius * radius;
+
+    if (d2 > r2) return null; // Ray misses the circle
+
+    // Distance from closest approach to intersection point
+    const thc = Math.sqrt(r2 - d2);
+
+    // Nearest intersection
+    let t = tca - thc;
+    if (t < 0) t = tca + thc; // Inside the circle, use far intersection
+    if (t < 0) return null; // Both behind ray
+
+    if (t > maxDist) return null;
+
+    return t;
+  }
 
   private buildWallSegments(): void {
     if (!this.mapData) return;

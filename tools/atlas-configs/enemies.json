@@ -1,0 +1,86 @@
+{
+  "id": "enemies",
+  "outputImage": "public/assets/sprites/enemies_atlas.png",
+  "outputMeta": "public/assets/sprites/enemies_atlas.json",
+  "imageUrl": "/assets/sprites/enemies_atlas.png",
+  "frameSize": 64,
+  "atlasColumns": 8,
+  "sheets": [
+    {
+      "input": "assets-src/sprites/grunt_sheet_raw.png",
+      "prefix": "enemy_grunt",
+      "cols": 4,
+      "rows": 3,
+      "frameSize": 64,
+      "frames": [
+        "idle", "walk_0", "walk_1", "walk_2",
+        "walk_3", "aim", "fire", "pain",
+        "death_0", "death_1", "death_2", "death_3"
+      ],
+      "animations": {
+        "": { "frames": ["idle"], "fps": 1, "loop": true },
+        "walk": { "frames": ["walk_0", "walk_1", "walk_2", "walk_3"], "fps": 8, "loop": true },
+        "attack": { "frames": ["aim", "fire"], "fps": 7, "loop": false },
+        "pain": { "frames": ["pain"], "fps": 1, "loop": false },
+        "death": { "frames": ["death_0", "death_1", "death_2", "death_3"], "fps": 10, "loop": false }
+      }
+    },
+    {
+      "input": "assets-src/sprites/enforcer_sheet_raw.png",
+      "prefix": "enemy_enforcer",
+      "cols": 4,
+      "rows": 3,
+      "frameSize": 64,
+      "frames": [
+        "idle", "walk_0", "walk_1", "walk_2",
+        "walk_3", "aim", "fire", "pain",
+        "death_0", "death_1", "death_2", "death_3"
+      ],
+      "animations": {
+        "": { "frames": ["idle"], "fps": 1, "loop": true },
+        "walk": { "frames": ["walk_0", "walk_1", "walk_2", "walk_3"], "fps": 7, "loop": true },
+        "attack": { "frames": ["aim", "fire"], "fps": 7, "loop": false },
+        "pain": { "frames": ["pain"], "fps": 1, "loop": false },
+        "death": { "frames": ["death_0", "death_1", "death_2", "death_3"], "fps": 10, "loop": false }
+      }
+    },
+    {
+      "input": "assets-src/sprites/runner_sheet_raw.png",
+      "prefix": "enemy_runner",
+      "cols": 4,
+      "rows": 3,
+      "frameSize": 64,
+      "frames": [
+        "idle", "walk_0", "walk_1", "walk_2",
+        "walk_3", "aim", "fire", "pain",
+        "death_0", "death_1", "death_2", "death_3"
+      ],
+      "animations": {
+        "": { "frames": ["idle"], "fps": 1, "loop": true },
+        "walk": { "frames": ["walk_0", "walk_1", "walk_2", "walk_3"], "fps": 12, "loop": true },
+        "attack": { "frames": ["aim", "fire"], "fps": 7, "loop": false },
+        "pain": { "frames": ["pain"], "fps": 1, "loop": false },
+        "death": { "frames": ["death_0", "death_1", "death_2", "death_3"], "fps": 10, "loop": false }
+      }
+    },
+    {
+      "input": "assets-src/sprites/heavy_sheet_raw.png",
+      "prefix": "enemy_heavy",
+      "cols": 4,
+      "rows": 3,
+      "frameSize": 64,
+      "frames": [
+        "idle", "walk_0", "walk_1", "walk_2",
+        "walk_3", "aim", "fire", "pain",
+        "death_0", "death_1", "death_2", "death_3"
+      ],
+      "animations": {
+        "": { "frames": ["idle"], "fps": 1, "loop": true },
+        "walk": { "frames": ["walk_0", "walk_1", "walk_2", "walk_3"], "fps": 5, "loop": true },
+        "attack": { "frames": ["aim", "fire"], "fps": 7, "loop": false },
+        "pain": { "frames": ["pain"], "fps": 1, "loop": false },
+        "death": { "frames": ["death_0", "death_1", "death_2", "death_3"], "fps": 10, "loop": false }
+      }
+    }
+  ]
+}

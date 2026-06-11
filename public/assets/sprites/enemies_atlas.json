@@ -1,0 +1,464 @@
+{
+  "id": "enemies",
+  "image": "/assets/sprites/enemies_atlas.png",
+  "frames": {
+    "enemy_grunt_idle": {
+      "x": 0,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_walk_0": {
+      "x": 64,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_walk_1": {
+      "x": 128,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_walk_2": {
+      "x": 192,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_walk_3": {
+      "x": 256,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_aim": {
+      "x": 320,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_fire": {
+      "x": 384,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_pain": {
+      "x": 448,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_death_0": {
+      "x": 0,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_death_1": {
+      "x": 64,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_death_2": {
+      "x": 128,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_grunt_death_3": {
+      "x": 192,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_idle": {
+      "x": 256,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_walk_0": {
+      "x": 320,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_walk_1": {
+      "x": 384,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_walk_2": {
+      "x": 448,
+      "y": 64,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_walk_3": {
+      "x": 0,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_aim": {
+      "x": 64,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_fire": {
+      "x": 128,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_pain": {
+      "x": 192,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_death_0": {
+      "x": 256,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_death_1": {
+      "x": 320,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_death_2": {
+      "x": 384,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_enforcer_death_3": {
+      "x": 448,
+      "y": 128,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_idle": {
+      "x": 0,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_walk_0": {
+      "x": 64,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_walk_1": {
+      "x": 128,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_walk_2": {
+      "x": 192,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_walk_3": {
+      "x": 256,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_aim": {
+      "x": 320,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_fire": {
+      "x": 384,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_pain": {
+      "x": 448,
+      "y": 192,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_death_0": {
+      "x": 0,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_death_1": {
+      "x": 64,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_death_2": {
+      "x": 128,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_runner_death_3": {
+      "x": 192,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_idle": {
+      "x": 256,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_walk_0": {
+      "x": 320,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_walk_1": {
+      "x": 384,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_walk_2": {
+      "x": 448,
+      "y": 256,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_walk_3": {
+      "x": 0,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_aim": {
+      "x": 64,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_fire": {
+      "x": 128,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_pain": {
+      "x": 192,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_death_0": {
+      "x": 256,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_death_1": {
+      "x": 320,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_death_2": {
+      "x": 384,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    },
+    "enemy_heavy_death_3": {
+      "x": 448,
+      "y": 320,
+      "w": 64,
+      "h": 64
+    }
+  },
+  "animations": {
+    "enemy_grunt": {
+      "frames": [
+        "enemy_grunt_idle"
+      ],
+      "fps": 1,
+      "loop": true
+    },
+    "enemy_grunt_walk": {
+      "frames": [
+        "enemy_grunt_walk_0",
+        "enemy_grunt_walk_1",
+        "enemy_grunt_walk_2",
+        "enemy_grunt_walk_3"
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "enemy_grunt_attack": {
+      "frames": [
+        "enemy_grunt_aim",
+        "enemy_grunt_fire"
+      ],
+      "fps": 7,
+      "loop": false
+    },
+    "enemy_grunt_pain": {
+      "frames": [
+        "enemy_grunt_pain"
+      ],
+      "fps": 1,
+      "loop": false
+    },
+    "enemy_grunt_death": {
+      "frames": [
+        "enemy_grunt_death_0",
+        "enemy_grunt_death_1",
+        "enemy_grunt_death_2",
+        "enemy_grunt_death_3"
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "enemy_enforcer": {
+      "frames": [
+        "enemy_enforcer_idle"
+      ],
+      "fps": 1,
+      "loop": true
+    },
+    "enemy_enforcer_walk": {
+      "frames": [
+        "enemy_enforcer_walk_0",
+        "enemy_enforcer_walk_1",
+        "enemy_enforcer_walk_2",
+        "enemy_enforcer_walk_3"
+      ],
+      "fps": 7,
+      "loop": true
+    },
+    "enemy_enforcer_attack": {
+      "frames": [
+        "enemy_enforcer_aim",
+        "enemy_enforcer_fire"
+      ],
+      "fps": 7,
+      "loop": false
+    },
+    "enemy_enforcer_pain": {
+      "frames": [
+        "enemy_enforcer_pain"
+      ],
+      "fps": 1,
+      "loop": false
+    },
+    "enemy_enforcer_death": {
+      "frames": [
+        "enemy_enforcer_death_0",
+        "enemy_enforcer_death_1",
+        "enemy_enforcer_death_2",
+        "enemy_enforcer_death_3"
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "enemy_runner": {
+      "frames": [
+        "enemy_runner_idle"
+      ],
+      "fps": 1,
+      "loop": true
+    },
+    "enemy_runner_walk": {
+      "frames": [
+        "enemy_runner_walk_0",
+        "enemy_runner_walk_1",
+        "enemy_runner_walk_2",
+        "enemy_runner_walk_3"
+      ],
+      "fps": 12,
+      "loop": true
+    },
+    "enemy_runner_attack": {
+      "frames": [
+        "enemy_runner_aim",
+        "enemy_runner_fire"
+      ],
+      "fps": 7,
+      "loop": false
+    },
+    "enemy_runner_pain": {
+      "frames": [
+        "enemy_runner_pain"
+      ],
+      "fps": 1,
+      "loop": false
+    },
+    "enemy_runner_death": {
+      "frames": [
+        "enemy_runner_death_0",
+        "enemy_runner_death_1",
+        "enemy_runner_death_2",
+        "enemy_runner_death_3"
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "enemy_heavy": {
+      "frames": [
+        "enemy_heavy_idle"
+      ],
+      "fps": 1,
+      "loop": true
+    },
+    "enemy_heavy_walk": {
+      "frames": [
+        "enemy_heavy_walk_0",
+        "enemy_heavy_walk_1",
+        "enemy_heavy_walk_2",
+        "enemy_heavy_walk_3"
+      ],
+      "fps": 5,
+      "loop": true
+    },
+    "enemy_heavy_attack": {
+      "frames": [
+        "enemy_heavy_aim",
+        "enemy_heavy_fire"
+      ],
+      "fps": 7,
+      "loop": false
+    },
+    "enemy_heavy_pain": {
+      "frames": [
+        "enemy_heavy_pain"
+      ],
+      "fps": 1,
+      "loop": false
+    },
+    "enemy_heavy_death": {
+      "frames": [
+        "enemy_heavy_death_0",
+        "enemy_heavy_death_1",
+        "enemy_heavy_death_2",
+        "enemy_heavy_death_3"
+      ],
+      "fps": 10,
+      "loop": false
+    }
+  }
+}

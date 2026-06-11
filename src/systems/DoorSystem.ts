@@ -213,6 +213,26 @@ export class DoorSystem {
     return this.doors.get(sectorId)?.progress ?? 0;
   }
 
+  /**
+   * Open a door by sector ID without proximity/facing/key checks.
+   * Used by enemy AI to open unlocked doors. Returns true if the door was opened.
+   */
+  tryOpenDoor(sectorId: number): boolean {
+    const door = this.doors.get(sectorId);
+    if (!door) return false;
+    if (door.keyRequired) return false; // Enemies can't open locked doors
+    if (door.state === DoorState.CLOSED) {
+      door.state = DoorState.OPENING;
+      return true;
+    }
+    return false;
+  }
+
+  /** Check if a point is inside a given sector. */
+  isPointInSector(x: number, z: number, sectorId: number): boolean {
+    return this.isEntityInSector(x, z, sectorId);
+  }
+
   private updateDoorCeiling(door: Door): void {
     const newCeiling = door.closedCeiling + (door.openCeiling - door.closedCeiling) * door.progress;
     door.sector.ceilingHeight = newCeiling;
