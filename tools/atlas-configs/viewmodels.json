@@ -1,0 +1,50 @@
+{
+  "id": "viewmodels",
+  "outputImage": "public/assets/sprites/viewmodels_atlas.png",
+  "outputMeta": "public/assets/sprites/viewmodels_atlas.json",
+  "imageUrl": "/assets/sprites/viewmodels_atlas.png",
+  "frameSize": 128,
+  "atlasColumns": 5,
+  "sheets": [
+    {
+      "input": "assets-src/sprites/vm_baton_raw.png",
+      "prefix": "viewmodel_baton",
+      "cols": 3,
+      "rows": 1,
+      "frameSize": 128,
+      "frames": ["ready", "fire", "recovery"]
+    },
+    {
+      "input": "assets-src/sprites/vm_pistol_raw.png",
+      "prefix": "viewmodel_pistol",
+      "cols": 3,
+      "rows": 1,
+      "frameSize": 128,
+      "frames": ["ready", "fire", "recovery"]
+    },
+    {
+      "input": "assets-src/sprites/vm_shotgun_raw.png",
+      "prefix": "viewmodel_shotgun",
+      "cols": 3,
+      "rows": 1,
+      "frameSize": 128,
+      "frames": ["ready", "fire", "recovery"]
+    },
+    {
+      "input": "assets-src/sprites/vm_auto_rifle_raw.png",
+      "prefix": "viewmodel_auto_rifle",
+      "cols": 3,
+      "rows": 1,
+      "frameSize": 128,
+      "frames": ["ready", "fire", "recovery"]
+    },
+    {
+      "input": "assets-src/sprites/vm_launcher_raw.png",
+      "prefix": "viewmodel_launcher",
+      "cols": 3,
+      "rows": 1,
+      "frameSize": 128,
+      "frames": ["ready", "fire", "recovery"]
+    }
+  ]
+}
