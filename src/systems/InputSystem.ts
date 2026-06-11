@@ -105,7 +105,14 @@ export class InputSystem {
   }
 
   requestPointerLock(): void {
-    this.canvas?.requestPointerLock();
+    // Pointer lock can be denied (no user activation, or Escape pressed
+    // recently). That must never abort game flow like respawn.
+    try {
+      const result = this.canvas?.requestPointerLock() as Promise<void> | undefined;
+      result?.catch(() => {});
+    } catch {
+      // ignore
+    }
   }
 
   isPointerLocked(): boolean {

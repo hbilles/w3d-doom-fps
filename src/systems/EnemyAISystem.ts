@@ -417,6 +417,9 @@ export class EnemyAISystem {
     enemy.state = EnemyState.CHASE;
     enemy.stateTimer = 0;
     enemy.losTimer = 0;
+    // Reaction time before the first attack — without this, a freshly
+    // spawned player gets focus-fired the instant enemies gain LOS.
+    enemy.attackCooldown = Math.max(enemy.attackCooldown, 0.5 + Math.random() * 0.6);
   }
 
   // ── Setup ──────────────────────────────────────────────

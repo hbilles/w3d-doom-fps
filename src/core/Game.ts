@@ -36,12 +36,20 @@ export class Game {
   private state: GameState = GameState.MENU;
   private lastTime: number = 0;
   private animationFrameId: number = 0;
+  private mapName: string = '';
+
+  // ── Death / respawn ────────────────────────────────────────
+  private deathTimer: number = 0;
+  private deathOverlayShown: boolean = false;
+  private damageFlashTimer: number = 0;
 
   // ── Entity management ──────────────────────────────────────
   private projectiles: Projectile[] = [];
   private pickups: Pickup[] = [];
   private barrels: Barrel[] = [];
   private enemies: Enemy[] = [];
+  /** Sprite ids of retired enemies left in the world as corpses. */
+  private corpseIds: string[] = [];
 
   // ── HUD message ────────────────────────────────────────────
   private hudMessage: string = '';
@@ -160,11 +168,40 @@ export class Game {
   }
 
   async init(canvas: HTMLCanvasElement, mapName: string): Promise<void> {
+    this.mapName = mapName;
     await this.renderer.init(canvas);
     this.inputSystem.init(canvas);
 
-    // Load map
-    const mapData = await MapLoader.load(mapName);
+    await this.loadLevel();
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+      this.renderer.resize(window.innerWidth, window.innerHeight);
+    });
+
+    // Handle pointer lock changes (pause/resume)
+    document.addEventListener('pointerlockchange', () => {
+      if (this.inputSystem.isPointerLocked()) {
+        if (this.state === GameState.PAUSED) {
+          this.state = GameState.PLAYING;
+          this.lastTime = performance.now();
+          this.eventBus.emit('game.resumed', null);
+        }
+      } else {
+        if (this.state === GameState.PLAYING) {
+          this.state = GameState.PAUSED;
+          this.eventBus.emit('game.paused', null);
+        }
+      }
+    });
+  }
+
+  /**
+   * Load (or reload) the current map: fresh map data, world geometry,
+   * systems, player, and entities. Used on init and on respawn.
+   */
+  private async loadLevel(): Promise<void> {
+    const mapData = await MapLoader.load(this.mapName);
     this.world = new World(mapData);
 
     // Door system must init BEFORE renderer so it can mutate sector
@@ -190,27 +227,6 @@ export class Game {
 
     // Spawn pickups and barrels from map things
     this.spawnEntitiesFromMap(mapData);
-
-    // Handle resize
-    window.addEventListener('resize', () => {
-      this.renderer.resize(window.innerWidth, window.innerHeight);
-    });
-
-    // Handle pointer lock changes (pause/resume)
-    document.addEventListener('pointerlockchange', () => {
-      if (this.inputSystem.isPointerLocked()) {
-        if (this.state === GameState.PAUSED) {
-          this.state = GameState.PLAYING;
-          this.lastTime = performance.now();
-          this.eventBus.emit('game.resumed', null);
-        }
-      } else {
-        if (this.state === GameState.PLAYING) {
-          this.state = GameState.PAUSED;
-          this.eventBus.emit('game.paused', null);
-        }
-      }
-    });
   }
 
   start(): void {
@@ -218,6 +234,42 @@ export class Game {
     this.lastTime = performance.now();
     this.inputSystem.requestPointerLock();
     this.loop(this.lastTime);
+  }
+
+  getState(): GameState {
+    return this.state;
+  }
+
+  /** Restart the current level after death (Doom-style full level reset). */
+  async respawn(): Promise<void> {
+    // Request pointer lock immediately while the click's user activation
+    // is still valid — awaiting the map fetch first can invalidate it.
+    this.inputSystem.requestPointerLock();
+
+    this.clearLevelEntities();
+    await this.loadLevel();
+
+    this.weaponSystem = new WeaponSystem(this.eventBus);
+    this.deathTimer = 0;
+    this.deathOverlayShown = false;
+    this.damageFlashTimer = 0;
+    this.hudMessageTimer = 0;
+
+    this.state = GameState.PLAYING;
+    this.lastTime = performance.now();
+  }
+
+  private clearLevelEntities(): void {
+    for (const proj of this.projectiles) this.renderer.removeSprite(proj.id);
+    for (const pickup of this.pickups) this.renderer.removeSprite(pickup.id);
+    for (const barrel of this.barrels) this.renderer.removeSprite(barrel.id);
+    for (const enemy of this.enemies) this.renderer.removeSprite(enemy.id);
+    for (const id of this.corpseIds) this.renderer.removeSprite(id);
+    this.projectiles = [];
+    this.pickups = [];
+    this.barrels = [];
+    this.enemies = [];
+    this.corpseIds = [];
   }
 
   requestPointerLock(): void {
@@ -243,6 +295,12 @@ export class Game {
 
     if (this.state === GameState.PLAYING) {
       this.update(dt);
+    } else if (this.state === GameState.DEAD) {
+      this.updateDeath(dt);
+    }
+
+    if (this.damageFlashTimer > 0) {
+      this.damageFlashTimer -= dt;
     }
 
     this.renderFrame();
@@ -323,6 +381,36 @@ export class Game {
     // Update HUD message timer
     if (this.hudMessageTimer > 0) {
       this.hudMessageTimer -= dt;
+    }
+  }
+
+  // ── Player Death ───────────────────────────────────────────
+
+  private onPlayerDeath(): void {
+    this.state = GameState.DEAD;
+    this.deathTimer = 0;
+    this.deathOverlayShown = false;
+    this.eventBus.emit('player.died', null);
+  }
+
+  /**
+   * Death sequence: camera sinks to the floor under a deepening red fade,
+   * enemy animations keep playing, then the respawn overlay is requested.
+   */
+  private updateDeath(dt: number): void {
+    this.deathTimer += dt;
+
+    if (this.player) {
+      this.player.eyeHeight = Math.max(0.35, this.player.eyeHeight - dt * 2.2);
+      this.player.position.y = this.player.floorHeight;
+    }
+
+    // Keep death/pain animations playing out (no AI decisions)
+    this.syncEnemySprites(dt);
+
+    if (!this.deathOverlayShown && this.deathTimer >= 1.3) {
+      this.deathOverlayShown = true;
+      this.eventBus.emit('player.deathOverlay', null);
     }
   }
 
@@ -461,8 +549,11 @@ export class Game {
     if (!this.player) return;
 
     this.enemyAISystem.update(dt, this.player, this.enemies);
+    this.syncEnemySprites(dt);
+  }
 
-    // Sync sprite positions/animations and handle dead enemies
+  /** Sync sprite positions/animations and handle dead enemies. */
+  private syncEnemySprites(dt: number): void {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const enemy = this.enemies[i];
 
@@ -504,6 +595,7 @@ export class Game {
       if (enemy.state === EnemyState.DEAD) {
         const deathDuration = anim.frameCount / anim.fps;
         if (enemy.animTime >= deathDuration + 0.2) {
+          this.corpseIds.push(enemy.id);
           this.enemies.splice(i, 1);
         }
       }
@@ -766,7 +858,14 @@ export class Game {
     }
 
     this.player.health = Math.max(0, this.player.health - healthDamage);
+    if (healthDamage > 0) {
+      this.damageFlashTimer = 0.35;
+    }
     this.eventBus.emit('player.damage', { damage: healthDamage, source });
+
+    if (this.player.health <= 0 && this.state === GameState.PLAYING) {
+      this.onPlayerDeath();
+    }
   }
 
   // ── Barrel / Splash Damage ─────────────────────────────────
@@ -862,15 +961,17 @@ export class Game {
 
     this.renderer.render(this.player.getCameraState(), [], []);
 
-    // Draw weapon viewmodel on HUD canvas
-    const weaponState = this.weaponSystem.getState();
-    const viewmodelState: WeaponViewmodelState = {
-      weaponId: this.weaponSystem.getCurrentWeapon(),
-      state: weaponState,
-      offset: this.weaponSystem.viewmodelOffset,
-      isFiring: weaponState === WeaponState.FIRE,
-    };
-    this.renderer.drawWeaponViewmodel(viewmodelState);
+    // Draw weapon viewmodel on HUD canvas (lowered out of sight when dead)
+    if (this.state !== GameState.DEAD) {
+      const weaponState = this.weaponSystem.getState();
+      const viewmodelState: WeaponViewmodelState = {
+        weaponId: this.weaponSystem.getCurrentWeapon(),
+        state: weaponState,
+        offset: this.weaponSystem.viewmodelOffset,
+        isFiring: weaponState === WeaponState.FIRE,
+      };
+      this.renderer.drawWeaponViewmodel(viewmodelState);
+    }
 
     // Draw HUD
     const currentWeaponDef = WEAPON_DEFS[this.weaponSystem.getCurrentWeapon()];
@@ -888,6 +989,8 @@ export class Game {
       keys: { ...this.player.keys },
       message: this.hudMessageTimer > 0 ? this.hudMessage : undefined,
       messageTimer: this.hudMessageTimer > 0 ? this.hudMessageTimer : undefined,
+      damageFlash: this.damageFlashTimer > 0 ? Math.min(1, this.damageFlashTimer / 0.35) : 0,
+      deathFade: this.state === GameState.DEAD ? Math.min(1, this.deathTimer * 0.7) : 0,
     };
     this.renderer.drawHUD(hudState);
 

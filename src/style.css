@@ -41,6 +41,11 @@ html, body {
   margin-bottom: 1rem;
 }
 
+#overlay h1.death-title {
+  color: #ff2222;
+  text-shadow: 0 0 20px #ff2222, 0 0 40px #aa0000;
+}
+
 #overlay p {
   font-size: 1.2rem;
   color: #ff8800;

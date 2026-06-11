@@ -25,6 +25,16 @@ export class HUD {
     const w = this.width;
     const h = this.height;
 
+    // Damage flash / death fade (drawn under the HUD bar)
+    const redAlpha = Math.max(
+      (state.damageFlash ?? 0) * 0.35,
+      (state.deathFade ?? 0) * 0.55,
+    );
+    if (redAlpha > 0) {
+      ctx.fillStyle = `rgba(180, 0, 0, ${redAlpha.toFixed(3)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
     const barHeight = 60;
     const barY = h - barHeight;
 

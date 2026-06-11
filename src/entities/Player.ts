@@ -20,6 +20,8 @@ export const MAX_HEALTH = 100;
 export class Player {
   position: Vec3;
   yaw: number;
+  /** Camera height above the floor — animated down on death. */
+  eyeHeight: number = EYE_HEIGHT;
   /** Visual floor height (lerped for smooth camera). */
   floorHeight: number = 0;
   /** Actual sector floor height (non-lerped, used for physics). */
@@ -108,7 +110,7 @@ export class Player {
       position: { x: this.position.x, y: this.position.y, z: this.position.z },
       yaw: this.yaw,
       fov: 90,
-      height: this.floorHeight + EYE_HEIGHT,
+      height: this.floorHeight + this.eyeHeight,
     };
   }
 }

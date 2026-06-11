@@ -82,4 +82,6 @@ export interface HUDState {
   keys: { red: boolean; blue: boolean; yellow: boolean };
   message?: string;      // Temporary message ("You need the red key")
   messageTimer?: number; // Remaining display time
+  damageFlash?: number;  // 0..1 — red flash when player takes damage
+  deathFade?: number;    // 0..1 — deepening red fade while dying
 }
