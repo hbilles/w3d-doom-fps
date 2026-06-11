@@ -1,32 +1,75 @@
 import * as THREE from 'three';
+import { TEXTURE_MANIFEST } from './TextureManifest.ts';
 
 const TEX_SIZE = 128;
 
 /**
- * Generates procedural placeholder textures and materials.
- * Each unique texture name gets a deterministic canvas-drawn pattern.
+ * Provides wall/floor/ceiling materials. Textures listed in the generated
+ * TEXTURE_MANIFEST are loaded from /assets/textures/ (pixel-art PNGs, with
+ * optional emissive maps for neon/glowing elements); anything else falls
+ * back to a procedural canvas-drawn pattern.
  */
 export class TextureManager {
   private materials: Map<string, THREE.MeshStandardMaterial> = new Map();
+  private loader = new THREE.TextureLoader();
 
   getMaterial(name: string | null | undefined): THREE.MeshStandardMaterial {
     const key = name ?? '_default';
     const cached = this.materials.get(key);
     if (cached) return cached;
 
+    const manifestEntry = TEXTURE_MANIFEST[key];
+    const material = manifestEntry
+      ? this.createFileMaterial(key, manifestEntry.emissive)
+      : this.createProceduralMaterial(key);
+
+    this.materials.set(key, material);
+    return material;
+  }
+
+  private createFileMaterial(
+    name: string,
+    emissive: boolean,
+  ): THREE.MeshStandardMaterial {
+    const map = this.loadTile(`/assets/textures/${name}.png`);
+
+    const material = new THREE.MeshStandardMaterial({
+      map,
+      side: THREE.DoubleSide,
+      roughness: 0.9,
+      metalness: 0.05,
+    });
+
+    if (emissive) {
+      material.emissive = new THREE.Color(0xffffff);
+      material.emissiveMap = this.loadTile(`/assets/textures/${name}_emissive.png`);
+      material.emissiveIntensity = 1.0;
+    }
+
+    return material;
+  }
+
+  private loadTile(url: string): THREE.Texture {
+    const tex = this.loader.load(url);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    return tex;
+  }
+
+  private createProceduralMaterial(key: string): THREE.MeshStandardMaterial {
     const texture = this.generateTexture(key);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
 
-    const material = new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
       map: texture,
       side: THREE.DoubleSide,
       roughness: 0.65,
       metalness: 0.25,
     });
-
-    this.materials.set(key, material);
-    return material;
   }
 
   dispose(): void {

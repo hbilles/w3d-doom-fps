@@ -1,0 +1,72 @@
+{
+  "outputDir": "public/assets/textures",
+  "manifest": "src/renderer/TextureManifest.ts",
+  "size": 256,
+  "textures": [
+    {
+      "name": "wall_concrete",
+      "input": "assets-src/textures/tex_wall_concrete.png",
+      "brighten": 1.9
+    },
+    {
+      "name": "wall_neon_blue",
+      "input": "assets-src/textures/tex_wall_neon.png",
+      "hueRotate": 40,
+      "emissive": true,
+      "emissiveTint": "#22aaff",
+      "brighten": 1.4
+    },
+    {
+      "name": "wall_neon_pink",
+      "input": "assets-src/textures/tex_wall_neon.png",
+      "hueRotate": 130,
+      "emissive": true,
+      "emissiveTint": "#ff44cc",
+      "brighten": 1.4
+    },
+    {
+      "name": "wall_neon_green",
+      "input": "assets-src/textures/tex_wall_neon.png",
+      "hueRotate": -60,
+      "emissive": true,
+      "emissiveTint": "#33ff88",
+      "brighten": 1.4
+    },
+    {
+      "name": "wall_neon_orange",
+      "input": "assets-src/textures/tex_wall_neon.png",
+      "hueRotate": -150,
+      "emissive": true,
+      "emissiveTint": "#ff8833",
+      "brighten": 1.4
+    },
+    {
+      "name": "door_metal",
+      "input": "assets-src/textures/tex_door_metal.png",
+      "emissive": true,
+      "brighten": 1.3
+    },
+    {
+      "name": "floor_concrete_wet",
+      "input": "assets-src/textures/tex_floor_concrete_wet.png",
+      "brighten": 1.8
+    },
+    {
+      "name": "floor_metal_grate",
+      "input": "assets-src/textures/tex_floor_metal_grate.png",
+      "brighten": 1.7
+    },
+    {
+      "name": "ceiling_pipes",
+      "input": "assets-src/textures/tex_ceiling_pipes.png",
+      "emissive": true,
+      "brighten": 1.6
+    },
+    {
+      "name": "ceiling_industrial",
+      "input": "assets-src/textures/tex_ceiling_industrial.png",
+      "emissive": true,
+      "brighten": 1.7
+    }
+  ]
+}

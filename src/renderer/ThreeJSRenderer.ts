@@ -523,11 +523,11 @@ export class ThreeJSRenderer implements IRenderer {
     }
 
     // Hemisphere light
-    const hemiLight = new THREE.HemisphereLight(0x8888aa, 0x333355, 0.8);
+    const hemiLight = new THREE.HemisphereLight(0x8888aa, 0x333355, 1.6);
     this.mapGroup.add(hemiLight);
 
     // Ambient
-    this.mapGroup.add(new THREE.AmbientLight(0x9999bb, 0.35));
+    this.mapGroup.add(new THREE.AmbientLight(0x9999bb, 0.7));
 
     // Fog
     const fogDensity = Math.min(mapData.fogDensity, 0.03);
